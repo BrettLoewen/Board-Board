@@ -3,10 +3,10 @@ import { ref, onMounted, onUnmounted } from "vue";
 import { supabase } from "../lib/supabaseClient";
 import type { Tables } from "../types/database.types";
 import Card from "./Card.vue";
-// import type { RealtimeChannel } from "@supabase/supabase-js";
+import type { RealtimeChannel } from "@supabase/supabase-js";
 
 const cards = ref<Tables<"cards">[]>([]);
-// let channel: RealtimeChannel;
+let channel: RealtimeChannel;
 
 async function getCards() {
   const { data } = await supabase.from("cards").select();
@@ -34,54 +34,57 @@ async function makeCard() {
 
   if (data) {
     cards.value.push(data);
-    // channel.send({ type: "broadcast", event: "card-add", payload: data });
+    channel.send({ type: "broadcast", event: "card-add", payload: data });
   }
 }
 
 onMounted(async () => {
   await getCards();
 
-  // channel = supabase.channel("board-broadcast");
-  // channel.on("broadcast", { event: "card-add" }, (payload) => {
-  //   const card = payload.payload;
-  //   if (!cards.value.some((c) => c.card_id === card.card_id)) {
-  //     cards.value.push(card);
-  //   }
-  // });
-  // channel.on("broadcast", { event: "card-update" }, (payload) => {
-  //   const { id, data } = payload.payload;
-  //   const card = cards.value.find((c) => c.card_id === id);
-  //   if (card) {
-  //     card.x = data.x;
-  //     card.y = data.y;
-  //     card.width = data.was;
-  //     card.height = data.height;
+  channel = supabase.channel("board-broadcast");
+  channel.on("broadcast", { event: "card-add" }, (payload) => {
+    console.log("broadcast received: card-add");
+    const card = payload.payload;
+    if (!cards.value.some((c) => c.card_id === card.card_id)) {
+      cards.value.push(card);
+    }
+  });
+  channel.on("broadcast", { event: "card-update" }, (payload) => {
+    const { card_id, ...data } = payload.payload;
+    console.log("broadcast received: card-update " + JSON.stringify(payload.payload));
+    const card = cards.value.find((c) => c.card_id === card_id);
+    console.log("card to update " + JSON.stringify(data));
+    if (card) {
+      card.x = data.x;
+      card.y = data.y;
+      card.width = data.width;
+      card.height = data.height;
 
-  //     console.log("Card was updated");
-  //   }
-  // });
-  // channel.subscribe();
-  const channel = supabase
-    .channel("db-changes")
-    .on("postgres_changes", { event: "INSERT", schema: "public", table: "cards" }, (payload) => {
-      const newCard = payload.new as Tables<"cards">;
-      if (!cards.value.some((c) => c.card_id === newCard.card_id)) {
-        cards.value.push(newCard);
-      }
-    })
-    .on("postgres_changes", { event: "UPDATE", schema: "public", table: "cards" }, (payload) => {
-      const updated = payload.new as Tables<"cards">;
-      const card = cards.value.find((c) => c.card_id === updated.card_id);
-      if (card) {
-        card.x = updated.x;
-        card.y = updated.y;
-        card.width = updated.width;
-        card.height = updated.height;
+      console.log("Card was updated");
+    }
+  });
+  channel.subscribe();
+  // const channel = supabase
+  //   .channel("db-changes")
+  //   .on("postgres_changes", { event: "INSERT", schema: "public", table: "cards" }, (payload) => {
+  //     const newCard = payload.new as Tables<"cards">;
+  //     if (!cards.value.some((c) => c.card_id === newCard.card_id)) {
+  //       cards.value.push(newCard);
+  //     }
+  //   })
+  //   .on("postgres_changes", { event: "UPDATE", schema: "public", table: "cards" }, (payload) => {
+  //     const updated = payload.new as Tables<"cards">;
+  //     const card = cards.value.find((c) => c.card_id === updated.card_id);
+  //     if (card) {
+  //       card.x = updated.x;
+  //       card.y = updated.y;
+  //       card.width = updated.width;
+  //       card.height = updated.height;
 
-        console.log("Card was updated");
-      }
-    })
-    .subscribe();
+  //       console.log("Card was updated");
+  //     }
+  //   })
+  //   .subscribe();
 
   onUnmounted(() => {
     supabase.removeChannel(channel);
