@@ -15,6 +15,8 @@ async function getCards() {
   cards.value = data as Tables<"cards">[];
 }
 
+// Used to guarantee sync with the database (keep the database as the source of truth) after broadcasts.
+// Should not be needed (because broadcasts should contain accurate and the most up-to-date data), but better safe than sorry.
 async function updateCards() {
   // Get the up-to-date cards data from the database
   const { data } = await supabase.from("cards").select();
