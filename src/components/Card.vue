@@ -3,14 +3,12 @@ import { reactive, onMounted, useTemplateRef } from "vue";
 import interact from "interactjs";
 import { supabase } from "../lib/supabaseClient";
 import type { Tables } from "../types/database.types";
-// import { debounce } from "@/utils/debounce";
 import { throttle } from "@/utils/throttle";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 
 // Get the card data from the cards parent
 const props = defineProps<{ card: Tables<"cards"> }>();
 
-// Create a local copy of the data that can be modified
 const card: Tables<"cards"> = reactive(props.card);
 let channel: RealtimeChannel;
 
@@ -18,8 +16,19 @@ let channel: RealtimeChannel;
 // Cannot use ".card" because it was mapping to the wrong card.
 const cardElement = useTemplateRef("card-element");
 
-async function updateCard() {
+// A single function to trigger both a broadcast of new card data and a write of that data to the database
+function updateCard() {
+  throttledWrite();
+  throttledBroadcast();
+}
+
+// Write the new data for the card to the database
+async function writeUpdate() {
   await supabase.from("cards").update(card).eq("card_id", card.card_id);
+}
+
+// Inform other clients of changes to the card's data so they can update immediately to the new data
+async function broadcastUpdate() {
   channel.send({
     type: "broadcast",
     event: "card-update",
@@ -27,7 +36,9 @@ async function updateCard() {
   });
 }
 
-const debouncedUpdate = throttle(updateCard, 50);
+// Used to trigger delayed calls for writing and broadcasting card updates
+const throttledWrite = throttle(writeUpdate, 200);
+const throttledBroadcast = throttle(broadcastUpdate, 50);
 
 // Setup interact.js to drag and resize the card
 onMounted(() => {
@@ -48,7 +59,7 @@ onMounted(() => {
             card.x += event.dx;
             card.y += event.dy;
 
-            debouncedUpdate();
+            updateCard();
           },
         },
         inertia: false,
@@ -68,7 +79,7 @@ onMounted(() => {
             card.x += event.deltaRect.left;
             card.y += event.deltaRect.top;
 
-            debouncedUpdate();
+            updateCard();
           },
         },
       });
