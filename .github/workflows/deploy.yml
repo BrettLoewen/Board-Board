@@ -1,0 +1,103 @@
+# Workflow to deploy the production web app and database for Board Board.
+name: Deploy Board-Board
+
+# Requires manual deployment. To be run after 'Build Board-Board App' finishes.
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: "Type 'yes' to confirm deployment to production"
+        required: true
+        default: "no"
+
+# Sets the GITHUB_TOKEN permissions to allow deployment to GitHub Pages
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Allow only one concurrent deployment
+concurrency:
+  group: "deployment"
+  cancel-in-progress: true
+
+jobs:
+  # Set up a shared environment and download the latest build artifact (created by 'Build Board-Board App')
+  prepare:
+    if: ${{ github.event.inputs.confirm == 'yes' }}
+    runs-on: ubuntu-latest
+    outputs:
+      build_path: dist
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: build-dist
+          path: dist
+
+  # Deploy the web app to GitHub Pages and the database to Supabase in parallel.
+  # `fail-fast: true` will cancel all parallel jobs if one fails.
+  # Uses production environment to access secrets from the GitHub production environment.
+  deploy_matrix:
+    needs: prepare
+    environment: production
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: true
+      matrix:
+        target: [web, database]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      # --- Web Deployment ---
+      - name: Setup Pages
+        if: matrix.target == 'web'
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages Artifact
+        if: matrix.target == 'web'
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: "./dist"
+
+      - name: Deploy to GitHub Pages
+        if: matrix.target == 'web'
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+      # --- Database Deployment ---
+      - name: Install Supabase CLI
+        if: matrix.target == 'database'
+        run: npm install -g supabase
+
+      - name: Push Supabase migrations to production
+        if: matrix.target == 'database'
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        run: |
+          supabase link --project-ref your-production-project-ref --password $SUPABASE_DB_PASSWORD
+          supabase db push
+
+  # Print results.
+  # Prints "✅ Both deployments succeeded!" if both web and database deployments passed.
+  # Prints "❌ Deployment failed. Both web & database deploys cancelled or rolled back." if either deployment failed.
+  # `if always()` is used to ensure that the results will be printed even if the 'deploy_matrix' job failed.
+  finalize:
+    needs: deploy_matrix
+    runs-on: ubuntu-latest
+    if: ${{ always() }}
+    steps:
+      - name: Report outcome
+        run: |
+          if [ "${{ needs.deploy_matrix.result }}" == "success" ]; then
+            echo "✅ Both deployments succeeded!"
+          else
+            echo "❌ Deployment failed. Both web & database deploys cancelled or rolled back."
+            exit 1
+          fi

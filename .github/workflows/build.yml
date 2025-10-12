@@ -1,0 +1,57 @@
+# Workflow to build the production web app for Board Board. It will be deployed manually using the 'Deploy Board-Board' workflow afterward.
+name: Build Board-Board App
+
+on:
+  # Runs on any commits to the main branch
+  push:
+    branches: ["main"]
+
+  # Allows running this workflow manually from the Actions tab
+  workflow_dispatch:
+
+# Sets the GITHUB_TOKEN permissions to allow deployment to GitHub Pages
+permissions:
+  contents: read
+  actions: write
+  id-token: write
+
+# Allow only one concurrent deployment
+concurrency:
+  group: "build-web"
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      build-status: ${{ steps.build_outcome.outcome }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Set up Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: lts/*
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build app
+        id: build_outcome
+        run: npm run build
+
+      - name: Upload dist as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-dist
+          path: dist/
+
+      - name: Notify build success
+        if: success()
+        run: echo "✅ Build succeeded! Go to Actions → 'Deploy Board-Board' and click 'Run workflow' to deploy."
+
+      - name: Notify build failed
+        if: failure()
+        run: echo "❌ Build failed. No deployment will occur."
