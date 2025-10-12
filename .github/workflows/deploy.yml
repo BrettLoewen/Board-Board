@@ -1,49 +1,64 @@
-# Workflow to deploy the production web app and database for Board Board.
-name: Deploy Board-Board
+# Workflow to build the production web app and deploy the production web app and database for Board Board.
+name: Build and Deploy
 
-# Requires manual deployment. To be run after 'Build Board-Board App' finishes.
 on:
+  # Runs on any commits to the main branch
+  push:
+    branches: ["main"]
+
+  # Allows running this workflow manually from the Actions tab
   workflow_dispatch:
-    inputs:
-      confirm:
-        description: "Type 'yes' to confirm deployment to production"
-        required: true
-        default: "no"
 
 # Sets the GITHUB_TOKEN permissions to allow deployment to GitHub Pages
 permissions:
   contents: read
-  pages: write
+  actions: write
   id-token: write
 
 # Allow only one concurrent deployment
 concurrency:
-  group: "deployment"
+  group: "build-and-deploy"
   cancel-in-progress: true
 
 jobs:
-  # Set up a shared environment and download the latest build artifact (created by 'Build Board-Board App')
-  prepare:
-    if: ${{ github.event.inputs.confirm == 'yes' }}
+  # Build the web app
+  build:
     runs-on: ubuntu-latest
     outputs:
-      build_path: dist
+      build-status: ${{ steps.build_outcome.outcome }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
 
-      - name: Download build artifact
-        uses: actions/download-artifact@v4
+      - name: Set up Node
+        uses: actions/setup-node@v5
         with:
-          name: build-dist
-          path: dist
+          node-version: lts/*
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build app
+        id: build_outcome
+        run: npm run build
+
+      - name: Notify build success
+        if: success()
+        run: echo "✅ Build succeeded!"
+
+      - name: Notify build failed
+        if: failure()
+        run: echo "❌ Build failed. No deployment will occur."
 
   # Deploy the web app to GitHub Pages and the database to Supabase in parallel.
   # `fail-fast: true` will cancel all parallel jobs if one fails.
   # Uses production environment to access secrets from the GitHub production environment.
   deploy_matrix:
-    needs: prepare
-    environment: production
+    needs: build
+    environment:
+      name: production
+      url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: true
