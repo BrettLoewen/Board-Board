@@ -88,7 +88,8 @@ jobs:
       # --- Database Deployment ---
       - name: Install Supabase CLI
         if: matrix.target == 'database'
-        run: npm install -g supabase
+        run: |
+          curl -fsSL https://cli.supabase.com/install.sh | sh -s -- -b /usr/local/bin
 
       - name: Push Supabase migrations to production
         if: matrix.target == 'database'
