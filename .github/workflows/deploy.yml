@@ -112,8 +112,8 @@ jobs:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
         run: |
-          supabase link --project-ref your-production-project-ref --password $SUPABASE_DB_PASSWORD
-          supabase db push
+          npx supabase link --project-ref your-production-project-ref --password $SUPABASE_DB_PASSWORD
+          npx supabase db push
 
   # Print results.
   # Prints "✅ Both deployments succeeded!" if both web and database deployments passed.
