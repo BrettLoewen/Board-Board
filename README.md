@@ -7,6 +7,7 @@ A WIP full stack application based on the prototype I made, found [here](https:/
 - [Vue](https://vuejs.org/guide/introduction.html)
 - [Vue Router](https://router.vuejs.org/)
 - [Pinia](https://pinia.vuejs.org/)
+- [Nuxt UI](https://ui.nuxt.com/)
 - [Vite](https://vite.dev/guide/)
 - [Supabase](https://supabase.com/docs)
 - [Supabase CLI](https://supabase.com/docs/reference/cli/global-flags)
