@@ -1,4 +1,24 @@
-<script setup lang="ts"></script>
+<script setup lang="ts">
+import { ref } from "vue";
+
+const mode = ref("login");
+const auth = ref(false);
+
+function onCloseAuth() {
+  console.log("clicked");
+  auth.value = false;
+}
+
+function login() {
+  mode.value = "login";
+  auth.value = true;
+}
+
+function signUp() {
+  mode.value = "sign-up";
+  auth.value = true;
+}
+</script>
 
 <template>
   <div class="container">
@@ -7,10 +27,11 @@
       <p>A digital whiteboard for collaborative planning, brainstorming, and organization.</p>
     </div>
     <div class="auth-layout">
-      <UButton class="auth-button">Login</UButton>
-      <UButton class="auth-button">Sign Up</UButton>
+      <UButton class="auth-button" @click="login">Login</UButton>
+      <UButton class="auth-button" @click="signUp">Sign Up</UButton>
     </div>
   </div>
+  <AuthPanel v-if="auth" :mode="mode" @close-auth="onCloseAuth" />
 </template>
 
 <style>

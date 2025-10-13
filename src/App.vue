@@ -6,4 +6,10 @@
   </UApp>
 </template>
 
-<style scoped></style>
+<style>
+html,
+body,
+#app {
+  height: 100%;
+}
+</style>
