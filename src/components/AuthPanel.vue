@@ -1,9 +1,13 @@
 <script setup lang="ts">
+import router from "@/router";
+import { useAuthStore } from "@/stores/auth";
 import type { FormSubmitEvent, AuthFormField } from "@nuxt/ui";
 
 const props = defineProps({ mode: { type: String, default: "login" } });
 
 const emit = defineEmits(["closeAuth"]);
+
+const auth = useAuthStore();
 
 const fields: AuthFormField[] = [
   {
@@ -20,15 +24,22 @@ const fields: AuthFormField[] = [
     placeholder: "Enter your password",
     required: true,
   },
-  {
-    name: "remember",
-    label: "Remember me",
-    type: "checkbox",
-  },
 ];
 
-function onSubmit(payload: FormSubmitEvent<{ email: string; password: string }>) {
-  console.log("Submitted", payload);
+async function onSubmit(payload: FormSubmitEvent<{ email: string; password: string }>) {
+  console.log("Submitted", payload.data);
+  try {
+    if (props.mode === "login") {
+      await auth.login(payload.data.email, payload.data.password);
+      // If your local env has email confirmations off, the user may be signed in immediately.
+      // In prod, Supabase may send confirmation email — behavior depends on project settings.
+    } else {
+      await auth.signup(payload.data.email, payload.data.password);
+    }
+    router.push({ path: "/dashboard" });
+  } catch (err) {
+    console.log(String(err));
+  }
 }
 
 function formTitle() {
