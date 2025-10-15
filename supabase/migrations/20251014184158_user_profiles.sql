@@ -32,7 +32,7 @@ set search_path = ''
 as $$
 begin
   insert into public.user_profiles (id, username, created_at)
-  values (new.id, new.email, now());
+  values (new.id, new.raw_user_meta_data->>'username', now());
   return new;
 end;
 $$ language plpgsql security definer;

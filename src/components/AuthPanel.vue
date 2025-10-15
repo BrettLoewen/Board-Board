@@ -9,7 +9,7 @@ const emit = defineEmits(["closeAuth"]);
 
 const auth = useAuthStore();
 
-const fields: AuthFormField[] = [
+const loginFields: AuthFormField[] = [
   {
     name: "email",
     type: "email",
@@ -26,7 +26,28 @@ const fields: AuthFormField[] = [
   },
 ];
 
-async function onSubmit(payload: FormSubmitEvent<{ email: string; password: string }>) {
+const signUpFields: AuthFormField[] = [
+  {
+    name: "username",
+    type: "text",
+    label: "Username",
+    placeholder: "Enter your username",
+    required: true,
+  },
+  ...loginFields,
+];
+
+function fields() {
+  if (props.mode === "login") {
+    return loginFields;
+  } else {
+    return signUpFields;
+  }
+}
+
+async function onSubmit(
+  payload: FormSubmitEvent<{ username: string; email: string; password: string }>,
+) {
   console.log("Submitted", payload.data);
   try {
     if (props.mode === "login") {
@@ -34,7 +55,7 @@ async function onSubmit(payload: FormSubmitEvent<{ email: string; password: stri
       // If your local env has email confirmations off, the user may be signed in immediately.
       // In prod, Supabase may send confirmation email — behavior depends on project settings.
     } else {
-      await auth.signup(payload.data.email, payload.data.password);
+      await auth.signup(payload.data.username, payload.data.email, payload.data.password);
     }
     router.push({ path: "/dashboard" });
   } catch (err) {
@@ -60,7 +81,7 @@ function closeAuth() {
   <div class="fill" @click="closeAuth">
     <UPageCard class="panel">
       <UAuthForm
-        :fields="fields"
+        :fields="fields()"
         :title="formTitle()"
         icon="i-lucide-lock"
         @submit="onSubmit"
