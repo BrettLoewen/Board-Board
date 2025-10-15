@@ -2,8 +2,10 @@
 import router from "@/router";
 import { useAuthStore } from "@/stores/auth";
 import type { FormSubmitEvent, AuthFormField } from "@nuxt/ui";
+import { ref } from "vue";
 
 const props = defineProps({ mode: { type: String, default: "login" } });
+const mode = ref<string>(props.mode);
 
 const emit = defineEmits(["closeAuth"]);
 
@@ -38,7 +40,7 @@ const signUpFields: AuthFormField[] = [
 ];
 
 function fields() {
-  if (props.mode === "login") {
+  if (mode.value === "login") {
     return loginFields;
   } else {
     return signUpFields;
@@ -50,7 +52,7 @@ async function onSubmit(
 ) {
   console.log("Submitted", payload.data);
   try {
-    if (props.mode === "login") {
+    if (mode.value === "login") {
       await auth.login(payload.data.email, payload.data.password);
       // If your local env has email confirmations off, the user may be signed in immediately.
       // In prod, Supabase may send confirmation email — behavior depends on project settings.
@@ -64,7 +66,7 @@ async function onSubmit(
 }
 
 function formTitle() {
-  if (props.mode === "login") {
+  if (mode.value === "login") {
     return "Login";
   } else {
     return "Sign Up";
@@ -74,6 +76,14 @@ function formTitle() {
 function closeAuth() {
   console.log("click");
   emit("closeAuth");
+}
+
+function switchAuthMode() {
+  if (mode.value === "login") {
+    mode.value = "sign-up";
+  } else {
+    mode.value = "login";
+  }
 }
 </script>
 
@@ -87,11 +97,17 @@ function closeAuth() {
         @submit="onSubmit"
         @click.stop
       >
-        <template v-if="props.mode === 'login'" #description>
-          Don't have an account? <ULink to="#" class="text-primary font-medium">Sign up</ULink>.
+        <template v-if="mode === 'login'" #description>
+          Don't have an account?
+          <ULink to="/" as="button" @click="switchAuthMode" class="text-primary font-medium"
+            >Sign up</ULink
+          >.
         </template>
         <template v-else #description>
-          Already have an account? <ULink to="#" class="text-primary font-medium">Login</ULink>.
+          Already have an account?
+          <ULink to="/" as="button" @click="switchAuthMode" class="text-primary font-medium"
+            >Login</ULink
+          >.
         </template>
       </UAuthForm>
     </UPageCard>
