@@ -3,12 +3,13 @@ import DashboardPage from "@/components/DashboardPage.vue";
 import WelcomePage from "@/components/WelcomePage.vue";
 import { useAuthStore } from "@/stores/auth";
 import { supabase } from "@/lib/supabaseClient";
+import { ROUTES } from "@/constants";
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes: [
-    { path: "/", component: WelcomePage },
-    { path: "/dashboard", component: DashboardPage, meta: { requiresAuth: true } },
+    { path: ROUTES.ROOT, component: WelcomePage },
+    { path: ROUTES.DASHBOARD, component: DashboardPage, meta: { requiresAuth: true } },
   ],
 });
 
@@ -28,7 +29,7 @@ router.beforeEach(async (to, from, next) => {
     return next();
   }
   // not authenticated
-  return next({ path: "/" });
+  return next({ path: ROUTES.ROOT });
 });
 
 export default router;

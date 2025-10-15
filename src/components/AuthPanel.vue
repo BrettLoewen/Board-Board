@@ -1,10 +1,11 @@
 <script setup lang="ts">
+import { AUTH, ROUTES } from "@/constants";
 import router from "@/router";
 import { useAuthStore } from "@/stores/auth";
 import type { FormSubmitEvent, AuthFormField } from "@nuxt/ui";
 import { ref } from "vue";
 
-const props = defineProps({ mode: { type: String, default: "login" } });
+const props = defineProps({ mode: { type: String, default: AUTH.MODES.LOGIN } });
 const mode = ref<string>(props.mode);
 
 const emit = defineEmits(["closeAuth"]);
@@ -40,7 +41,7 @@ const signUpFields: AuthFormField[] = [
 ];
 
 function fields() {
-  if (mode.value === "login") {
+  if (mode.value === AUTH.MODES.LOGIN) {
     return loginFields;
   } else {
     return signUpFields;
@@ -52,37 +53,38 @@ async function onSubmit(
 ) {
   console.log("Submitted", payload.data);
   try {
-    if (mode.value === "login") {
+    if (mode.value === AUTH.MODES.LOGIN) {
       await auth.login(payload.data.email, payload.data.password);
       // If your local env has email confirmations off, the user may be signed in immediately.
       // In prod, Supabase may send confirmation email — behavior depends on project settings.
     } else {
       await auth.signup(payload.data.username, payload.data.email, payload.data.password);
     }
-    router.push({ path: "/dashboard" });
+    router.push({ path: ROUTES.DASHBOARD });
   } catch (err) {
     console.log(String(err));
   }
 }
 
 function formTitle() {
-  if (mode.value === "login") {
+  if (mode.value === AUTH.MODES.LOGIN) {
     return "Login";
-  } else {
+  } else if (mode.value === AUTH.MODES.SIGN_UP) {
     return "Sign Up";
+  } else {
+    return "";
   }
 }
 
 function closeAuth() {
-  console.log("click");
   emit("closeAuth");
 }
 
 function switchAuthMode() {
-  if (mode.value === "login") {
-    mode.value = "sign-up";
+  if (mode.value === AUTH.MODES.LOGIN) {
+    mode.value = AUTH.MODES.SIGN_UP;
   } else {
-    mode.value = "login";
+    mode.value = AUTH.MODES.LOGIN;
   }
 }
 </script>
@@ -97,7 +99,7 @@ function switchAuthMode() {
         @submit="onSubmit"
         @click.stop
       >
-        <template v-if="mode === 'login'" #description>
+        <template v-if="mode === AUTH.MODES.LOGIN" #description>
           Don't have an account?
           <ULink to="/" as="button" @click="switchAuthMode" class="text-primary font-medium"
             >Sign up</ULink

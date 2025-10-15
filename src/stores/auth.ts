@@ -3,6 +3,7 @@ import type { User, Session } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabaseClient";
 import { ref } from "vue";
 import router from "@/router";
+import { ROUTES } from "@/constants";
 
 export const useAuthStore = defineStore("auth", () => {
   const user = ref<User | null>(null);
@@ -27,8 +28,8 @@ export const useAuthStore = defineStore("auth", () => {
       // If the user was signed out or deleted, then redirect to root
       if (!user.value) {
         profile.value = null;
-        if (router.currentRoute.value.path !== "/") {
-          router.push({ path: "/" });
+        if (router.currentRoute.value.path !== ROUTES.ROOT) {
+          router.push({ path: ROUTES.ROOT });
         }
       } else {
         fetchProfile().catch(console.error);
@@ -91,7 +92,7 @@ export const useAuthStore = defineStore("auth", () => {
     user.value = null;
     session.value = null;
     profile.value = null;
-    router.push({ path: "/" });
+    router.push({ path: ROUTES.ROOT });
   };
 
   init().catch(console.error);

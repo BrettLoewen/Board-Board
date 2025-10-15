@@ -1,21 +1,21 @@
 <script setup lang="ts">
+import { AUTH } from "@/constants";
 import { ref } from "vue";
 
-const mode = ref("login");
+const mode = ref(AUTH.MODES.LOGIN);
 const auth = ref(false);
 
 function onCloseAuth() {
-  console.log("clicked");
   auth.value = false;
 }
 
 function login() {
-  mode.value = "login";
+  mode.value = AUTH.MODES.LOGIN;
   auth.value = true;
 }
 
 function signUp() {
-  mode.value = "sign-up";
+  mode.value = AUTH.MODES.SIGN_UP;
   auth.value = true;
 }
 </script>
