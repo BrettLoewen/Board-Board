@@ -28,6 +28,7 @@ router.beforeEach(async (to, from, next) => {
     await auth.fetchProfile();
     return next();
   }
+  console.log("not authenticated");
   // not authenticated
   return next({ path: ROUTES.ROOT });
 });

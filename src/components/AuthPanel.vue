@@ -2,11 +2,12 @@
 import { AUTH, ROUTES } from "@/constants";
 import router from "@/router";
 import { useAuthStore } from "@/stores/auth";
-import type { FormSubmitEvent, AuthFormField } from "@nuxt/ui";
 import { ref } from "vue";
+import type { FormSubmitEvent, AuthFormField } from "@nuxt/ui";
 
 const props = defineProps({ mode: { type: String, default: AUTH.MODES.LOGIN } });
 const mode = ref<string>(props.mode);
+const valid = ref<string>(AUTH.VALIDATION.VALID);
 
 const emit = defineEmits(["closeAuth"]);
 
@@ -52,17 +53,32 @@ async function onSubmit(
   payload: FormSubmitEvent<{ username: string; email: string; password: string }>,
 ) {
   console.log("Submitted", payload.data);
-  try {
-    if (mode.value === AUTH.MODES.LOGIN) {
-      await auth.login(payload.data.email, payload.data.password);
-      // If your local env has email confirmations off, the user may be signed in immediately.
-      // In prod, Supabase may send confirmation email — behavior depends on project settings.
-    } else {
-      await auth.signup(payload.data.username, payload.data.email, payload.data.password);
+  if (mode.value === AUTH.MODES.LOGIN || (payload.data.username && payload.data.username !== "")) {
+    try {
+      if (mode.value === AUTH.MODES.LOGIN) {
+        await auth.login(payload.data.email, payload.data.password);
+        // If your local env has email confirmations off, the user may be signed in immediately.
+        // In prod, Supabase may send confirmation email — behavior depends on project settings.
+      } else {
+        await auth.signup(payload.data.username, payload.data.email, payload.data.password);
+      }
+      console.log("sending to dashboard");
+      valid.value = AUTH.VALIDATION.VALID;
+      router.push({ path: ROUTES.DASHBOARD });
+    } catch (err) {
+      console.log(String(err));
+      if (String(err).includes(AUTH.ERRORS.INVALID)) {
+        valid.value = AUTH.VALIDATION.INVALID;
+      } else if (String(err).includes(AUTH.ERRORS.ALREADY_REGISTERED)) {
+        valid.value = AUTH.VALIDATION.INVALID;
+      } else if (String(err).includes(AUTH.ERRORS.WEAK_PASSWORD)) {
+        valid.value = AUTH.VALIDATION.WEAK_PASSWORD;
+      } else if (String(err).includes(AUTH.ERRORS.DATABASE_ERROR)) {
+        valid.value = AUTH.VALIDATION.INVALID_USERNAME;
+      }
     }
-    router.push({ path: ROUTES.DASHBOARD });
-  } catch (err) {
-    console.log(String(err));
+  } else {
+    valid.value = AUTH.VALIDATION.MISSING_FIELD;
   }
 }
 
@@ -77,6 +93,7 @@ function formTitle() {
 }
 
 function closeAuth() {
+  valid.value = AUTH.VALIDATION.VALID;
   emit("closeAuth");
 }
 
@@ -111,6 +128,42 @@ function switchAuthMode() {
             >Login</ULink
           >.
         </template>
+        <template v-if="valid === AUTH.VALIDATION.INVALID" #validation>
+          <UAlert
+            class="alert"
+            icon="i-lucide-info"
+            variant="subtle"
+            color="error"
+            description="Invalid credentials!"
+          />
+        </template>
+        <template v-else-if="valid === AUTH.VALIDATION.WEAK_PASSWORD" #validation>
+          <UAlert
+            class="alert"
+            icon="i-lucide-info"
+            variant="subtle"
+            color="error"
+            description="Weak password!"
+          />
+        </template>
+        <template v-else-if="valid === AUTH.VALIDATION.MISSING_FIELD" #validation>
+          <UAlert
+            class="alert"
+            icon="i-lucide-info"
+            variant="subtle"
+            color="error"
+            description="Missing field!"
+          />
+        </template>
+        <template v-else-if="valid === AUTH.VALIDATION.INVALID_USERNAME" #validation>
+          <UAlert
+            class="alert"
+            icon="i-lucide-info"
+            variant="subtle"
+            color="error"
+            description="Username is too short!"
+          />
+        </template>
       </UAuthForm>
     </UPageCard>
   </div>
@@ -129,5 +182,10 @@ function switchAuthMode() {
 .panel {
   margin: 10rem;
   min-width: 25rem;
+}
+
+.alert {
+  align-items: center;
+  height: 2rem;
 }
 </style>
