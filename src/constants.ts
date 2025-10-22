@@ -21,4 +21,6 @@ export const AUTH = {
 export const ROUTES = {
   ROOT: "/",
   DASHBOARD: "/dashboard/",
+  EMAIL: "/email/",
+  NOT_FOUND: "/:pathMatch(.*)*",
 };

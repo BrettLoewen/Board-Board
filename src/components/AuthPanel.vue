@@ -60,7 +60,17 @@ async function onSubmit(
         // If your local env has email confirmations off, the user may be signed in immediately.
         // In prod, Supabase may send confirmation email — behavior depends on project settings.
       } else {
-        await auth.signup(payload.data.username, payload.data.email, payload.data.password);
+        const data = await auth.signup(
+          payload.data.username,
+          payload.data.email,
+          payload.data.password,
+        );
+        if (data.user && !data.session) {
+          console.log("email confirmation needed");
+          valid.value = AUTH.VALIDATION.VALID;
+          router.push(ROUTES.EMAIL);
+          return;
+        }
       }
       console.log("sending to dashboard");
       valid.value = AUTH.VALIDATION.VALID;

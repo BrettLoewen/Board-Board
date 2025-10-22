@@ -1,36 +1,53 @@
 import { createRouter, createWebHistory } from "vue-router";
-import DashboardPage from "@/components/DashboardPage.vue";
-import WelcomePage from "@/components/WelcomePage.vue";
 import { useAuthStore } from "@/stores/auth";
 import { supabase } from "@/lib/supabaseClient";
 import { ROUTES } from "@/constants";
+import DashboardPage from "@/pages/DashboardPage.vue";
+import WelcomePage from "@/pages/WelcomePage.vue";
+import EmailConfirmationPage from "@/pages/EmailConfirmationPage.vue";
+import NotFoundPage from "@/pages/NotFoundPage.vue";
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes: [
     { path: ROUTES.ROOT, component: WelcomePage },
+    { path: ROUTES.EMAIL, component: EmailConfirmationPage },
     { path: ROUTES.DASHBOARD, component: DashboardPage, meta: { requiresAuth: true } },
+    { path: ROUTES.NOT_FOUND, component: NotFoundPage },
   ],
 });
 
-router.beforeEach(async (to, from, next) => {
-  const auth = useAuthStore();
-  // Wait for initial store init to resolve user (init runs on store creation)
-  // If profile and user are null but there may be a session, let the store handle it.
+router.beforeEach(async (to) => {
+  // Check if the route requires authentication
   const requiresAuth = to.meta.requiresAuth as boolean | undefined;
-  if (!requiresAuth) return next();
-  // If user already known, go
-  if (auth.user) return next();
-  // Otherwise attempt to get session from supabase client (in case page refreshed)
-  const { data } = await supabase.auth.getSession();
-  const s = data?.session ?? null;
-  if (s?.user) {
-    await auth.fetchProfile();
-    return next();
+
+  // If it does not, continue to the route
+  if (!requiresAuth) {
+    console.log("not protected route " + to.fullPath);
+    return true;
   }
-  console.log("not authenticated");
-  // not authenticated
-  return next({ path: ROUTES.ROOT });
+  // If it does, check if the user is authenticated
+  else {
+    const auth = useAuthStore();
+
+    // If the user is authenticated, continue to the route
+    if (auth.user) {
+      return true;
+    }
+
+    // Attempt to get session from supabase client (in case the user should be signed in but isn't) (in case page refreshed)
+    const { data } = await supabase.auth.getSession();
+    const s = data?.session ?? null;
+    // If the user was found, continue to the route
+    if (s?.user) {
+      await auth.fetchProfile();
+      return true;
+    }
+
+    // If the user was unable to be authenticated, return the site's homepage
+    console.log("not authenticated " + to.fullPath);
+    return ROUTES.ROOT;
+  }
 });
 
 export default router;
