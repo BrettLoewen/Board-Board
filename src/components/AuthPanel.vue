@@ -49,6 +49,22 @@ function fields() {
   }
 }
 
+const providers = [
+  {
+    label: "Google",
+    icon: "simple-icons:google",
+    onClick: async () => {
+      console.log("Login with Google");
+      try {
+        await auth.signInWithGoogle();
+        valid.value = AUTH.VALIDATION.VALID;
+      } catch (err) {
+        console.log(String(err));
+      }
+    },
+  },
+];
+
 async function onSubmit(
   payload: FormSubmitEvent<{ username: string; email: string; password: string }>,
 ) {
@@ -121,6 +137,7 @@ function switchAuthMode() {
     <UPageCard class="panel">
       <UAuthForm
         :fields="fields()"
+        :providers="providers"
         :title="formTitle()"
         icon="i-lucide-lock"
         @submit="onSubmit"

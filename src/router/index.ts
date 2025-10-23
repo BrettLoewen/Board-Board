@@ -6,6 +6,7 @@ import DashboardPage from "@/pages/DashboardPage.vue";
 import WelcomePage from "@/pages/WelcomePage.vue";
 import EmailConfirmationPage from "@/pages/EmailConfirmationPage.vue";
 import NotFoundPage from "@/pages/NotFoundPage.vue";
+import AuthCallback from "@/pages/AuthCallback.vue";
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -14,6 +15,7 @@ const router = createRouter({
     { path: ROUTES.EMAIL, component: EmailConfirmationPage },
     { path: ROUTES.DASHBOARD, component: DashboardPage, meta: { requiresAuth: true } },
     { path: ROUTES.NOT_FOUND, component: NotFoundPage },
+    { path: "/auth/callback", component: AuthCallback },
   ],
 });
 

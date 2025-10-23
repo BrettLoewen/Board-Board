@@ -87,6 +87,19 @@ export const useAuthStore = defineStore("auth", () => {
     return data;
   };
 
+  const signInWithGoogle = async () => {
+    console.log("Is browser:", typeof window !== "undefined");
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: {
+        redirectTo: "http://localhost:5173/Board-Board/auth/callback",
+      },
+    });
+    if (error) throw error;
+    // fetch profile after sign-in
+    await fetchProfile();
+  };
+
   const logout = async () => {
     await supabase.auth.signOut();
     user.value = null;
@@ -104,6 +117,7 @@ export const useAuthStore = defineStore("auth", () => {
     fetchProfile,
     signup,
     login,
+    signInWithGoogle,
     logout,
   };
 });
