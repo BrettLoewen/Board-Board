@@ -16,6 +16,7 @@
     "format": "prettier --write src/"
   },
   "dependencies": {
+    "@nuxt/ui": "^4.0.1",
     "@supabase/supabase-js": "^2.75.0",
     "interactjs": "^1.10.27",
     "pinia": "^3.0.3",

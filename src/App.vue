@@ -1,9 +1,15 @@
-<script setup lang="ts">
-import Cards from "./components/Cards.vue";
-</script>
+<script setup lang="ts"></script>
 
 <template>
-  <Cards />
+  <UApp>
+    <RouterView />
+  </UApp>
 </template>
 
-<style scoped></style>
+<style>
+html,
+body,
+#app {
+  height: 100%;
+}
+</style>
