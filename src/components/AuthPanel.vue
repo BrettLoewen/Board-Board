@@ -119,14 +119,14 @@ function switchAuthMode() {
 </script>
 
 <template>
-  <div class="fill" @click="closeAuth">
+  <div class="fill" @mousedown="closeAuth">
     <UPageCard class="panel">
       <UAuthForm
         :fields="fields()"
         :title="formTitle()"
         icon="i-lucide-lock"
         @submit="onSubmit"
-        @click.stop
+        @mousedown.stop
       >
         <template v-if="mode === AUTH.MODES.LOGIN" #description>
           Don't have an account?
