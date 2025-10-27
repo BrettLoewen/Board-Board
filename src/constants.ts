@@ -15,6 +15,7 @@ export const AUTH = {
     ALREADY_REGISTERED: "AuthApiError: User already registered",
     WEAK_PASSWORD: "AuthWeakPasswordError",
     DATABASE_ERROR: "AuthApiError: Database error saving new user",
+    EMAIL_NOT_CONFIRMED: "AuthApiError: Email not confirmed",
   },
 };
 

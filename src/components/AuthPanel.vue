@@ -77,9 +77,11 @@ async function onSubmit(
       router.push({ path: ROUTES.DASHBOARD });
     } catch (err) {
       console.log(String(err));
-      if (String(err).includes(AUTH.ERRORS.INVALID)) {
-        valid.value = AUTH.VALIDATION.INVALID;
-      } else if (String(err).includes(AUTH.ERRORS.ALREADY_REGISTERED)) {
+      if (
+        String(err).includes(AUTH.ERRORS.INVALID) ||
+        String(err).includes(AUTH.ERRORS.ALREADY_REGISTERED) ||
+        String(err).includes(AUTH.ERRORS.EMAIL_NOT_CONFIRMED)
+      ) {
         valid.value = AUTH.VALIDATION.INVALID;
       } else if (String(err).includes(AUTH.ERRORS.WEAK_PASSWORD)) {
         valid.value = AUTH.VALIDATION.WEAK_PASSWORD;
