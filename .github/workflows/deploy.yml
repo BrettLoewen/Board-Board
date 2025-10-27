@@ -44,6 +44,13 @@ jobs:
         id: build_outcome
         run: npm run build
 
+      # Necessary to ensure manual routing works correctly in GitHub Pages
+      - name: Copy index.html to 404.html
+        if: success()
+        run: |
+          cp dist/index.html dist/404.html
+          echo "Copied index.html to 404.html for GitHub Pages routing support"
+
       - name: Upload built app
         if: success()
         uses: actions/upload-artifact@v4
