@@ -1,22 +1,30 @@
 <script setup lang="ts">
-import { AUTH } from "@/constants";
+import { AUTH, ROUTES } from "@/constants";
+import router from "@/router";
+import { useAuthStore } from "@/stores/auth";
 import { ref } from "vue";
 
+const auth = useAuthStore();
+
 const mode = ref(AUTH.MODES.LOGIN);
-const auth = ref(false);
+const authPanelActive = ref(false);
 
 function onCloseAuth() {
-  auth.value = false;
+  authPanelActive.value = false;
 }
 
 function login() {
   mode.value = AUTH.MODES.LOGIN;
-  auth.value = true;
+  authPanelActive.value = true;
 }
 
 function signUp() {
   mode.value = AUTH.MODES.SIGN_UP;
-  auth.value = true;
+  authPanelActive.value = true;
+}
+
+function dashboard() {
+  router.push(ROUTES.DASHBOARD);
 }
 </script>
 
@@ -26,12 +34,15 @@ function signUp() {
       <h1>Welcome to Board Board!</h1>
       <p>A digital whiteboard for collaborative planning, brainstorming, and organization.</p>
     </div>
-    <div class="auth-layout">
+    <div v-if="auth.profile" class="auth-layout">
+      <UButton class="auth-button" @click="dashboard">Go to Dashboard</UButton>
+    </div>
+    <div v-else class="auth-layout">
       <UButton class="auth-button" @click="login">Login</UButton>
       <UButton class="auth-button" @click="signUp">Sign Up</UButton>
     </div>
   </div>
-  <AuthPanel v-if="auth" :mode="mode" @close-auth="onCloseAuth" />
+  <AuthPanel v-if="authPanelActive" :mode="mode" @close-auth="onCloseAuth" />
 </template>
 
 <style>
