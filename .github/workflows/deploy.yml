@@ -22,8 +22,38 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Run Playwright tests before build
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Set up Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: lts/*
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps
+
+      - name: Run tests
+        run: npx playwright test
+
+      # Upload the test results so they can be examined if necessary
+      - name: Upload Playwright HTML report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
   # Build the web app
   build:
+    needs: test
     runs-on: ubuntu-latest
     outputs:
       build-status: ${{ steps.build_outcome.outcome }}
