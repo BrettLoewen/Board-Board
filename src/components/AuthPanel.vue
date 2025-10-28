@@ -146,7 +146,7 @@ function switchAuthMode() {
             icon="i-lucide-info"
             variant="subtle"
             color="error"
-            description="Invalid credentials!"
+            :description="AUTH.MESSAGES.INVALID"
           />
         </template>
         <template v-else-if="valid === AUTH.VALIDATION.WEAK_PASSWORD" #validation>
@@ -155,7 +155,7 @@ function switchAuthMode() {
             icon="i-lucide-info"
             variant="subtle"
             color="error"
-            description="Weak password!"
+            :description="AUTH.MESSAGES.WEAK_PASSWORD"
           />
         </template>
         <template v-else-if="valid === AUTH.VALIDATION.MISSING_FIELD" #validation>
@@ -164,7 +164,7 @@ function switchAuthMode() {
             icon="i-lucide-info"
             variant="subtle"
             color="error"
-            description="Missing field!"
+            :description="AUTH.MESSAGES.MISSING_FIELD"
           />
         </template>
         <template v-else-if="valid === AUTH.VALIDATION.INVALID_USERNAME" #validation>
@@ -173,7 +173,7 @@ function switchAuthMode() {
             icon="i-lucide-info"
             variant="subtle"
             color="error"
-            description="Username is too short!"
+            :description="AUTH.MESSAGES.INVALID_USERNAME"
           />
         </template>
       </UAuthForm>

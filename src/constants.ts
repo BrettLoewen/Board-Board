@@ -17,6 +17,12 @@ export const AUTH = {
     DATABASE_ERROR: "AuthApiError: Database error saving new user",
     EMAIL_NOT_CONFIRMED: "AuthApiError: Email not confirmed",
   },
+  MESSAGES: {
+    INVALID: "Invalid credentials!",
+    WEAK_PASSWORD: "Weak password!",
+    MISSING_FIELD: "Missing field!",
+    INVALID_USERNAME: "Username is too short!",
+  },
 };
 
 export const ROUTES = {

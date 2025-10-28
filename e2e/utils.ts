@@ -18,8 +18,6 @@ async function startSupabase() {
 
 function reseedDb() {
   execSync(
-    // "PGPASSWORD=postgres psql -U postgres -h 127.0.0.1 -p 64322 -f supabase/clear-db-data.sql",
-    // for Windows:
     "SET PGPASSWORD=postgres&&psql -U postgres -h 127.0.0.1 -p 54322 -f supabase/clear_db_data.sql",
     { stdio: "ignore" },
   );
@@ -55,9 +53,9 @@ export async function signUp(
 }
 
 export async function login(page: Page, userEmail: string, userPassword: string, userName: string) {
-  // Open the sign up form
-  const signUpButton = page.locator("button", { hasText: "Login" }).first();
-  await signUpButton.click();
+  // Open the login form
+  const loginButton = page.locator("button", { hasText: "Login" }).first();
+  await loginButton.click();
 
   // Enter the test user's info
   const emailInput = page.locator('input[name="email"]');
