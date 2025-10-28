@@ -32,3 +32,10 @@ coverage
 # Auto-generated type declarations
 auto-imports.d.ts
 components.d.ts
+
+# Playwright
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+/playwright/.auth/
