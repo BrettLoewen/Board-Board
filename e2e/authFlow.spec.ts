@@ -66,6 +66,23 @@ test.describe("User Auth", () => {
     await login(page, userEmail, userPassword, userName);
   });
 
+  test("Logged in user sees dashboard button on welcome page", async ({ page }) => {
+    // Sign up
+    await signUp(page, userEmail, userPassword, userName);
+
+    // Return to the welcome page
+    await page.goto("http://localhost:5173/Board-Board/");
+
+    // Return to the dashboard
+    const dashboardButton = page.locator("button", { hasText: "Go to Dashboard" });
+    await expect(dashboardButton).toHaveCount(1);
+    dashboardButton.click();
+
+    // Verify that the user returned to the dashboard
+    const welcomeNotice = page.locator("p", { hasText: `Welcome, ${userName}!` });
+    await expect(welcomeNotice).toHaveCount(1);
+  });
+
   test("Can switch between login and sign up forms", async ({ page }) => {
     // Open the login form
     const loginFormButton = page.locator("button", { hasText: "Login" }).first();
