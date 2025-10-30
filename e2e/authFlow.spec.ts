@@ -120,6 +120,31 @@ test.describe("User Auth", () => {
   });
 
   test.describe("Sign up validation", () => {
+    test("Logging in cannot be done before signing up", async ({ page }) => {
+      // Open the login form
+      const loginButton = page.locator("button", { hasText: "Login" }).first();
+      await loginButton.click();
+
+      // Enter the new user's info
+      const emailInput = page.locator('input[name="email"]');
+      await emailInput.fill(userEmail);
+      const passwordInput = page.locator('input[name="password"]');
+      await passwordInput.fill(userPassword);
+
+      // Submit the login form
+      await page.keyboard.press("Enter");
+
+      // Verfiy the correct error message was displayed
+      const errorMessage = page.locator(
+        "div.relative.overflow-hidden.w-full.rounded-lg.p-4.flex.gap-2\\.5.items-start.bg-error\\/10.text-error.ring.ring-inset.ring-error\\/25.alert",
+        {
+          hasText: AUTH.MESSAGES.INVALID,
+        },
+      );
+      await expect(errorMessage).toBeVisible();
+      await expect(errorMessage).toHaveCount(1);
+    });
+
     test("Usernames shorter than 3 characters aren't allowed", async ({ page }) => {
       // Open the sign up form
       const signUpButton = page.locator("button", { hasText: "Sign Up" }).first();
@@ -161,6 +186,112 @@ test.describe("User Auth", () => {
       await passwordInput.fill(userPassword);
 
       // Submit the sign up form
+      await page.keyboard.press("Enter");
+
+      // Verfiy the correct error message was displayed
+      const errorMessage = page.locator(
+        "div.relative.overflow-hidden.w-full.rounded-lg.p-4.flex.gap-2\\.5.items-start.bg-error\\/10.text-error.ring.ring-inset.ring-error\\/25.alert",
+        {
+          hasText: AUTH.MESSAGES.MISSING_FIELD,
+        },
+      );
+      await expect(errorMessage).toBeVisible();
+      await expect(errorMessage).toHaveCount(1);
+    });
+
+    test("Emails that are empty aren't allowed in sign up", async ({ page }) => {
+      // Open the sign up form
+      const signUpButton = page.locator("button", { hasText: "Sign Up" }).first();
+      await signUpButton.click();
+
+      // Enter the new user's info
+      const usernameInput = page.locator('input[name="username"]');
+      await usernameInput.fill(userName);
+      const emailInput = page.locator('input[name="email"]');
+      await emailInput.fill("");
+      const passwordInput = page.locator('input[name="password"]');
+      await passwordInput.fill(userPassword);
+
+      // Submit the sign up form
+      await page.keyboard.press("Enter");
+
+      // Verfiy the correct error message was displayed
+      const errorMessage = page.locator(
+        "div.relative.overflow-hidden.w-full.rounded-lg.p-4.flex.gap-2\\.5.items-start.bg-error\\/10.text-error.ring.ring-inset.ring-error\\/25.alert",
+        {
+          hasText: AUTH.MESSAGES.MISSING_FIELD,
+        },
+      );
+      await expect(errorMessage).toBeVisible();
+      await expect(errorMessage).toHaveCount(1);
+    });
+
+    test("Emails that are empty aren't allowed in login", async ({ page }) => {
+      // Logging in without signing up first would fail anyway, but the missing field error will happen first
+      // Open the login form
+      const loginButton = page.locator("button", { hasText: "Login" }).first();
+      await loginButton.click();
+
+      // Enter the new user's info
+      const emailInput = page.locator('input[name="email"]');
+      await emailInput.fill("");
+      const passwordInput = page.locator('input[name="password"]');
+      await passwordInput.fill(userPassword);
+
+      // Submit the login form
+      await page.keyboard.press("Enter");
+
+      // Verfiy the correct error message was displayed
+      const errorMessage = page.locator(
+        "div.relative.overflow-hidden.w-full.rounded-lg.p-4.flex.gap-2\\.5.items-start.bg-error\\/10.text-error.ring.ring-inset.ring-error\\/25.alert",
+        {
+          hasText: AUTH.MESSAGES.MISSING_FIELD,
+        },
+      );
+      await expect(errorMessage).toBeVisible();
+      await expect(errorMessage).toHaveCount(1);
+    });
+
+    test("Passwords that are empty aren't allowed in sign up", async ({ page }) => {
+      // Open the sign up form
+      const signUpButton = page.locator("button", { hasText: "Sign Up" }).first();
+      await signUpButton.click();
+
+      // Enter the new user's info
+      const usernameInput = page.locator('input[name="username"]');
+      await usernameInput.fill(userName);
+      const emailInput = page.locator('input[name="email"]');
+      await emailInput.fill(userEmail);
+      const passwordInput = page.locator('input[name="password"]');
+      await passwordInput.fill("");
+
+      // Submit the sign up form
+      await page.keyboard.press("Enter");
+
+      // Verfiy the correct error message was displayed
+      const errorMessage = page.locator(
+        "div.relative.overflow-hidden.w-full.rounded-lg.p-4.flex.gap-2\\.5.items-start.bg-error\\/10.text-error.ring.ring-inset.ring-error\\/25.alert",
+        {
+          hasText: AUTH.MESSAGES.MISSING_FIELD,
+        },
+      );
+      await expect(errorMessage).toBeVisible();
+      await expect(errorMessage).toHaveCount(1);
+    });
+
+    test("Passwords that are empty aren't allowed in login", async ({ page }) => {
+      // Logging in without signing up first would fail anyway, but the missing field error will happen first
+      // Open the login form
+      const loginButton = page.locator("button", { hasText: "Login" }).first();
+      await loginButton.click();
+
+      // Enter the new user's info
+      const emailInput = page.locator('input[name="email"]');
+      await emailInput.fill(userEmail);
+      const passwordInput = page.locator('input[name="password"]');
+      await passwordInput.fill("");
+
+      // Submit the login form
       await page.keyboard.press("Enter");
 
       // Verfiy the correct error message was displayed

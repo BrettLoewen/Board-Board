@@ -46,7 +46,7 @@ const signUpFields: AuthFormField[] = [
 ];
 
 // Return the form fields based on the auth panel's current state
-function fields() {
+function fields(): AuthFormField[] {
   if (mode.value === AUTH.MODES.LOGIN) {
     return loginFields;
   } else {
@@ -55,7 +55,7 @@ function fields() {
 }
 
 // Return the form title based on the auth panel's current state
-function formTitle() {
+function formTitle(): string {
   if (mode.value === AUTH.MODES.LOGIN) {
     return "Login";
   } else if (mode.value === AUTH.MODES.SIGN_UP) {
@@ -65,14 +65,25 @@ function formTitle() {
   }
 }
 
+function checkFormFields(
+  payload: FormSubmitEvent<{ username: string; email: string; password: string }>,
+): boolean {
+  // If the user is trying to login, check email and password
+  if (mode.value === AUTH.MODES.LOGIN) {
+    return !!payload.data.email && !!payload.data.password;
+  }
+  // If the user is trying to sign up, check username, email, and password
+  else {
+    return !!payload.data.username && !!payload.data.email && !!payload.data.password;
+  }
+}
+
 async function onSubmit(
   payload: FormSubmitEvent<{ username: string; email: string; password: string }>,
-) {
+): Promise<void> {
   // console.log("Submitted", payload.data);
-  // If all values were included.
-  // The AuthForm automatically checks the email and password fields, but the text type for the username field requires a manual check.
-  // The username will be left empty in login mode: if the username is included, or the mode is login, then the submission can continue.
-  if (mode.value === AUTH.MODES.LOGIN || (payload.data.username && payload.data.username !== "")) {
+  // Check if all values were included.
+  if (checkFormFields(payload)) {
     try {
       // In login mode, attempt to login the user
       if (mode.value === AUTH.MODES.LOGIN) {
@@ -117,20 +128,20 @@ async function onSubmit(
       }
     }
   }
-  // If a field (the username) was missing, update the auth panel's state
+  // If a field was missing, update the auth panel's state
   else {
     valid.value = AUTH.VALIDATION.MISSING_FIELD;
   }
 }
 
 // If the user clicked to close the auth panel, inform the parent component to close the panel
-function closeAuth() {
+function closeAuth(): void {
   valid.value = AUTH.VALIDATION.VALID;
   emit("closeAuth");
 }
 
 // Toggle between the login and sign up auth panel modes
-function switchAuthMode() {
+function switchAuthMode(): void {
   if (mode.value === AUTH.MODES.LOGIN) {
     mode.value = AUTH.MODES.SIGN_UP;
   } else {
