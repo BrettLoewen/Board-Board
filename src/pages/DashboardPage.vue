@@ -3,6 +3,7 @@ import { useAuthStore } from "@/stores/auth";
 
 const auth = useAuthStore();
 
+// Sign out the user (which will send the user back to the welcome page)
 function logout() {
   auth.logout();
 }

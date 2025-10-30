@@ -2,8 +2,8 @@
 import { ROUTES } from "@/constants";
 import router from "@/router";
 
+// Return the user to the welcome page
 function toWelcomePage() {
-  console.log("Back to home");
   router.push(ROUTES.ROOT);
 }
 </script>

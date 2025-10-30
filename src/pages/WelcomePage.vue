@@ -4,33 +4,39 @@ import router from "@/router";
 import { useAuthStore } from "@/stores/auth";
 import { ref } from "vue";
 
+// Used to check for a logged in user and to sign up / login users
 const auth = useAuthStore();
 
+// Track the state of the auth panel. Start with it hidden/inactive
 const mode = ref(AUTH.MODES.LOGIN);
 const authPanelActive = ref(false);
 
+// Hide the auth panel
 function onCloseAuth() {
   authPanelActive.value = false;
 }
 
+// Open the auth panel in the LOGIN state
 function login() {
   mode.value = AUTH.MODES.LOGIN;
   authPanelActive.value = true;
 }
 
+// Open the auth panel in the SIGN_UP state
 function signUp() {
   mode.value = AUTH.MODES.SIGN_UP;
   authPanelActive.value = true;
 }
 
+// Send the user to the dashboard page
 function dashboard() {
   router.push(ROUTES.DASHBOARD);
 }
 </script>
 
 <template>
-  <div class="container">
-    <div class="welcome">
+  <div class="welcome-container">
+    <div class="welcome-message">
       <h1>Welcome to Board Board!</h1>
       <p>A digital whiteboard for collaborative planning, brainstorming, and organization.</p>
     </div>
@@ -46,7 +52,7 @@ function dashboard() {
 </template>
 
 <style>
-.container {
+.welcome-container {
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -57,17 +63,17 @@ function dashboard() {
   min-height: 200px;
 }
 
-.welcome {
+.welcome-message {
   text-align: center;
   display: flex;
   flex-direction: column;
   align-items: center;
   margin-bottom: 10px;
 }
-.welcome h1 {
+.welcome-message h1 {
   font-size: 60pt;
 }
-.welcome p {
+.welcome-message p {
   width: 50%;
   font-size: 15pt;
 }
@@ -82,6 +88,9 @@ function dashboard() {
 .auth-button {
   justify-content: center;
   font-size: 12pt;
+}
+.auth-button:hover {
+  cursor: pointer;
 }
 .auth-button:active {
   background-color: var(--color-primary-800);

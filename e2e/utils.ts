@@ -2,11 +2,13 @@ import { execSync, spawnSync } from "child_process";
 import detect from "detect-port";
 import { Page, expect } from "@playwright/test";
 
+// Ensure a fresh database exists
 export async function setupE2eTest() {
   await startSupabase();
   reseedDb();
 }
 
+// Ensure the database exists
 async function startSupabase() {
   const port = await detect(54321);
   if (port !== 54321) {
@@ -16,6 +18,7 @@ async function startSupabase() {
   execSync("supabase start");
 }
 
+// Clear all the data so all tests are running in a known environment
 function reseedDb() {
   spawnSync(
     "psql",

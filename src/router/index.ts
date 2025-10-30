@@ -23,7 +23,7 @@ router.beforeEach(async (to) => {
 
   // If it does not, continue to the route
   if (!requiresAuth) {
-    console.log("not protected route " + to.fullPath);
+    // console.log("not protected route " + to.fullPath);
     return true;
   }
   // If it does, check if the user is authenticated
@@ -37,15 +37,15 @@ router.beforeEach(async (to) => {
 
     // Attempt to get session from supabase client (in case the user should be signed in but isn't) (in case page refreshed)
     const { data } = await supabase.auth.getSession();
-    const s = data?.session ?? null;
+    const session = data?.session ?? null;
     // If the user was found, continue to the route
-    if (s?.user) {
+    if (session?.user) {
       await auth.fetchProfile();
       return true;
     }
 
     // If the user was unable to be authenticated, return the site's homepage
-    console.log("not authenticated " + to.fullPath);
+    // console.log("not authenticated " + to.fullPath);
     return ROUTES.ROOT;
   }
 });
