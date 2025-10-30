@@ -51,15 +51,11 @@ export async function signUp(
   // Submit the sign up form
   await page.keyboard.press("Enter");
 
-  // Verify the dashboard page was reached.
-  // Will need to be changed later after dashboard is updated.
-  const welcomeNotice = page.locator("p", { hasText: `Welcome, ${userName}!` });
-  await expect(welcomeNotice).toHaveCount(1);
-  const logoutButton = page.locator("button", { hasText: "Sign out" });
-  await expect(logoutButton).toHaveCount(1);
+  // Verify the dashboard page was reached and the user is logged in.
+  await verifyDashboardReached(page);
 }
 
-export async function login(page: Page, userEmail: string, userPassword: string, userName: string) {
+export async function login(page: Page, userEmail: string, userPassword: string) {
   // Open the login form
   const loginButton = page.locator("button", { hasText: "Login" }).first();
   await loginButton.click();
@@ -70,13 +66,28 @@ export async function login(page: Page, userEmail: string, userPassword: string,
   const passwordInput = page.locator('input[name="password"]');
   await passwordInput.fill(userPassword);
 
-  // Submit the sign up form
+  // Submit the login form
   await page.keyboard.press("Enter");
 
+  // Verify the dashboard page was reached and the user is logged in.
+  await verifyDashboardReached(page);
+}
+
+export async function verifyDashboardReached(page: Page) {
   // Verify the dashboard page was reached.
-  // Will need to be changed later after dashboard is updated.
-  const welcomeNotice = page.locator("p", { hasText: `Welcome, ${userName}!` });
-  await expect(welcomeNotice).toHaveCount(1);
-  const logoutButton = page.locator("button", { hasText: "Sign out" });
+  const welcomePageLink = page.locator("a", { hasText: "Board Board" });
+  await expect(welcomePageLink).toHaveCount(1);
+
+  // Open the user dropdown
+  const userButton = page.locator("button.navbar-right-button");
+  await expect(userButton).toHaveCount(1);
+  userButton.click();
+
+  // Verify the logout button exists
+  const logoutButton = page.locator("button", { hasText: "Logout" });
+  await expect(logoutButton).toBeVisible();
   await expect(logoutButton).toHaveCount(1);
+
+  // Close the user dropdown so further testing doesn't break
+  await page.keyboard.press("Escape");
 }

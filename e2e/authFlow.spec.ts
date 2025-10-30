@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { login, setupE2eTest, signUp } from "./utils";
+import { login, setupE2eTest, signUp, verifyDashboardReached } from "./utils";
 import { AUTH } from "../src/constants.ts";
 
 // For every test...
@@ -61,9 +61,16 @@ test.describe("User Auth", () => {
     await signUp(page, userEmail, userPassword, userName);
 
     // Log out
-    const logoutButton = page.locator("button", { hasText: "Sign out" });
+    // Open the user dropdown
+    const userButton = page.locator("button.navbar-right-button");
+    await expect(userButton).toHaveCount(1);
+    userButton.click();
+    // Verify the logout button exists
+    const logoutButton = page.locator("button", { hasText: "Logout" });
+    await expect(logoutButton).toBeVisible();
     await expect(logoutButton).toHaveCount(1);
-    logoutButton.click();
+    // Actually log out
+    await logoutButton.click();
 
     // Log back in
     await login(page, userEmail, userPassword, userName);
@@ -79,11 +86,10 @@ test.describe("User Auth", () => {
     // Return to the dashboard
     const dashboardButton = page.locator("button", { hasText: "Go to Dashboard" });
     await expect(dashboardButton).toHaveCount(1);
-    dashboardButton.click();
+    await dashboardButton.click();
 
     // Verify that the user returned to the dashboard
-    const welcomeNotice = page.locator("p", { hasText: `Welcome, ${userName}!` });
-    await expect(welcomeNotice).toHaveCount(1);
+    await verifyDashboardReached(page);
   });
 
   test("Can switch between login and sign up forms", async ({ page }) => {
@@ -337,9 +343,16 @@ test.describe("User Auth", () => {
       await signUp(page, userEmail, userPassword, userName);
 
       // Log out that user
-      const logoutButton = page.locator("button", { hasText: "Sign out" });
+      // Open the user dropdown
+      const userButton = page.locator("button.navbar-right-button");
+      await expect(userButton).toHaveCount(1);
+      userButton.click();
+      // Verify the logout button exists
+      const logoutButton = page.locator("button", { hasText: "Logout" });
+      await expect(logoutButton).toBeVisible();
       await expect(logoutButton).toHaveCount(1);
-      logoutButton.click();
+      // Actually log out
+      await logoutButton.click();
 
       // Open the sign up form again
       const signUpButton = page.locator("button", { hasText: "Sign Up" }).first();

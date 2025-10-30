@@ -10,7 +10,7 @@ const items = ref<DropdownMenuItem[][]>([
   [
     {
       // Display the user's username
-      label: auth.profile.username,
+      label: auth.profile?.username,
       type: "label",
     },
   ],
