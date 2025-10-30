@@ -30,8 +30,10 @@ export const AUTH = {
 };
 
 export const ROUTES = {
-  ROOT: "/",
-  DASHBOARD: "/dashboard/",
-  EMAIL: "/email/",
   NOT_FOUND: "/:pathMatch(.*)*",
+  ROOT: "/",
+  EMAIL: "/email",
+  DASHBOARD: "/dashboard",
+  FRIENDS: "/dashboard/friends",
+  SETTINGS: "/dashboard/settings",
 };
