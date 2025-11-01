@@ -3,6 +3,7 @@ import { h, ref, resolveComponent } from "vue";
 import { ROUTES } from "@/constants";
 import { useAuthStore } from "@/stores/auth";
 import type { DropdownMenuItem, TableColumn } from "@nuxt/ui";
+import type { Column } from "@tanstack/vue-table";
 
 type Board = {
   name: string;
@@ -10,17 +11,18 @@ type Board = {
   ownedBy: string;
 };
 
-// enum Sorting {
-//   None = 0,
-//   Desc = 1,
-//   Acs = 2,
-// }
-
-// const UButton = resolveComponent("UButton");
+const UButton = resolveComponent("UButton"); // Used to create and define a UButton in code in the table's header
 
 const auth = useAuthStore();
 
+// Controls the sorting of table columns.
+// Starts as an empty array to make each column start with no sorting applied.
+const sorting = ref([]);
+
+// Used to filter out rows based on the stored text.
 const globalFilter = ref("");
+
+// Defines what is included in the navbar's user dropdown
 const items = ref<DropdownMenuItem[][]>([
   [
     {
@@ -55,6 +57,7 @@ const items = ref<DropdownMenuItem[][]>([
   ],
 ]);
 
+// The data used by the board table (replace with data from supabase later)
 const data = ref([
   {
     name: "Board 1",
@@ -73,34 +76,19 @@ const data = ref([
   },
 ]);
 
+// Link the column data to a column in the table and format the data as necessary
 const columns: TableColumn<Board>[] = [
   {
     accessorKey: "name",
-    header: "Name",
+    header: ({ column }) => getHeader(column, "Name"),
   },
   {
     accessorKey: "ownedBy",
-    header: "Owned By",
-    // header: ({ column }) => {
-    //   const isSorted = column.getIsSorted();
-
-    //   return h(UButton, {
-    //     color: "neutral",
-    //     variant: "ghost",
-    //     label: "Owned By",
-    //     icon: isSorted
-    //       ? isSorted === "asc"
-    //         ? "i-lucide-arrow-up-narrow-wide"
-    //         : "i-lucide-arrow-down-wide-narrow"
-    //       : "i-lucide-arrow-up-down",
-    //     class: "-mx-2.5",
-    //     onClick: () => column.toggleSorting(),
-    //   });
-    // },
+    header: ({ column }) => getHeader(column, "Owned By"),
   },
   {
     accessorKey: "openedAt",
-    header: "Last Opened",
+    header: ({ column }) => getHeader(column, "Opened At"),
     cell: ({ row }) => {
       return new Date(row.getValue("openedAt")).toLocaleString("en-US", {
         day: "numeric",
@@ -113,25 +101,32 @@ const columns: TableColumn<Board>[] = [
   },
 ];
 
-const sorting = ref([
-  {
-    id: "name",
-    desc: false,
-  },
-  {
-    id: "ownedBy",
-    desc: false,
-  },
-  {
-    id: "openedAt",
-    desc: false,
-  },
-]);
+// Returns a formated header button containing a label and the current sorting icon for the passed column
+function getHeader(column: Column<Board>, label: string) {
+  const isSorted = column.getIsSorted();
 
-// function nextSortingValue(sortValue: Sorting): Sorting {
-//   const maxValue = Object.values(Sorting).length / 2 - 1;
-//   return sortValue >= maxValue ? 0 : sortValue + 1;
-// }
+  return h(UButton, {
+    color: "neutral",
+    variant: "ghost",
+    label,
+    icon: isSorted
+      ? isSorted === "asc"
+        ? "i-lucide-arrow-up-narrow-wide"
+        : "i-lucide-arrow-down-wide-narrow"
+      : "i-lucide-arrow-up-down",
+    class: "-mx-2.5",
+    // Force the sorting order cycle to be: "none" -> "desc" => "asc" -> "none"
+    onClick: () => {
+      if (isSorted === "asc") {
+        column.clearSorting();
+      } else if (isSorted === "desc") {
+        column.toggleSorting(false);
+      } else {
+        column.toggleSorting(true);
+      }
+    },
+  });
+}
 
 function createBoard(): void {
   console.log("Create board");
@@ -141,7 +136,7 @@ function createBoard(): void {
 <template>
   <UDashboardNavbar class="navbar">
     <template #left>
-      <ULink to="/" as="button" class="text-primary font-medium">Board Board</ULink>
+      <ULink to="/" as="button" class="text-primary font-medium text-2xl">Board Board</ULink>
     </template>
 
     <template #right>
@@ -179,6 +174,8 @@ function createBoard(): void {
     0 3px 1px -2px rgba(0, 0, 0, 0.2),
     0 2px 2px 0 rgba(0, 0, 0, 0.14),
     0 1px 5px 0 rgba(0, 0, 0, 0.12);
+  padding-left: 15px;
+  padding-right: 15px;
 }
 
 .navbar-right-button {
