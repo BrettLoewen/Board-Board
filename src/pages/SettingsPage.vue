@@ -3,6 +3,7 @@ import { computed, reactive, ref } from "vue";
 import { ROUTES } from "@/constants";
 import router from "@/router";
 import { useAuthStore } from "@/stores/auth";
+import { supabase } from "@/lib/supabaseClient";
 import type { FormError, FormSubmitEvent, SelectItem } from "@nuxt/ui";
 
 const auth = useAuthStore();
@@ -50,14 +51,24 @@ function validate(data: typeof state): FormError[] {
   const errors: FormError[] = [];
   console.log("validate: " + JSON.stringify(data));
 
-  // if (!state.email) errors.push({ name: 'email', message: 'Required' })
-  // if (!state.password) errors.push({ name: 'password', message: 'Required' })
+  // If a new username was entered, and is too short, than print an error to the username form field about that
+  if (data.username && (data.username as string)?.length < 3) {
+    errors.push({ name: "username", message: "Username too short!" });
+  }
 
   return errors;
 }
 
-function submit(payload: FormSubmitEvent<typeof state>): void {
+async function submit(payload: FormSubmitEvent<typeof state>): Promise<void> {
   console.log("submit: " + JSON.stringify(payload.data));
+
+  // If a new username was entered, update the user's username
+  if (payload.data.username && (payload.data.username as string)?.length >= 3 && auth.user) {
+    await supabase
+      .from("user_profiles")
+      .update({ username: payload.data.username })
+      .eq("id", auth.user.id);
+  }
 }
 </script>
 
