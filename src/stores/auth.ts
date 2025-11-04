@@ -1,5 +1,5 @@
 import { defineStore } from "pinia";
-import type { User, Session } from "@supabase/supabase-js";
+import { type User, type Session } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabaseClient";
 import { ref } from "vue";
 import router from "@/router";
@@ -30,7 +30,7 @@ export const useAuthStore = defineStore("auth", () => {
       session.value = newSession ?? null;
       user.value = newSession?.user ?? null;
 
-      // If the user was signed out or deleted, then redirect to root
+      // If the user was signed out, then redirect to root
       if (!user.value) {
         profile.value = null;
         if (router.currentRoute.value.path !== ROUTES.ROOT) {
@@ -99,9 +99,7 @@ export const useAuthStore = defineStore("auth", () => {
     return data;
   };
 
-  const logout = async () => {
-    await supabase.auth.signOut();
-
+  const clearUserData = async () => {
     // Clear all user data referencing the previous user
     user.value = null;
     session.value = null;
@@ -111,6 +109,38 @@ export const useAuthStore = defineStore("auth", () => {
     // A) Can log in with the same or a different account if they wish
     // B) Do not accesss content that was only available to the previously logged in user
     router.push({ path: ROUTES.ROOT });
+  };
+
+  const logout = async () => {
+    await supabase.auth.signOut();
+
+    // Now that the user is logged out, clear their data and return to the welcome page
+    clearUserData();
+  };
+
+  const deleteAccount = async () => {
+    // Call an edge function to delete the user's auth profile and everything connected to it
+    const { error } = await supabase.functions.invoke("delete-user", {
+      headers: {
+        Authorization: `Bearer ${session.value?.access_token}`,
+      },
+    });
+
+    if (error) {
+      console.error("Failed to delete account:", error);
+    } else {
+      console.log("Account deleted successfully. Logging user out.");
+
+      // Delete the user's token from their storage to fully log out the user
+      for (const key in localStorage) {
+        if (key.match(/^sb-.*-auth-token$/)) {
+          localStorage.removeItem(key);
+        }
+      }
+
+      // Now that the account is deleted, clear their data and return to the welcome page
+      clearUserData();
+    }
   };
 
   init().catch(console.error);
@@ -123,5 +153,6 @@ export const useAuthStore = defineStore("auth", () => {
     signup,
     login,
     logout,
+    deleteAccount,
   };
 });

@@ -70,6 +70,10 @@ async function submit(payload: FormSubmitEvent<typeof state>): Promise<void> {
       .eq("id", auth.user.id);
   }
 }
+
+async function deleteAccount(): Promise<void> {
+  await auth.deleteAccount();
+}
 </script>
 
 <template>
@@ -109,7 +113,26 @@ async function submit(payload: FormSubmitEvent<typeof state>): Promise<void> {
       :ui="{ container: 'text-error', label: 'text-error' }"
     />
     <div>
-      <UButton color="error" class="delete-button">Delete Account</UButton>
+      <UModal
+        title="Delete your Account"
+        description="This action cannot be reversed. Are you sure you want to delete your account?"
+        :close="{ class: 'delete-modal-close-button' }"
+      >
+        <UButton color="error" class="delete-button">Delete Account</UButton>
+
+        <template #body="{ close }">
+          <div class="delete-modal-buttons">
+            <UButton color="error" label="Delete" class="delete-button" @click="deleteAccount" />
+            <UButton
+              color="neutral"
+              variant="outline"
+              label="Cancel"
+              class="delete-modal-cancel-button"
+              @click="close"
+            />
+          </div>
+        </template>
+      </UModal>
     </div>
   </div>
 </template>
@@ -166,6 +189,27 @@ async function submit(payload: FormSubmitEvent<typeof state>): Promise<void> {
   background-color: var(--color-error-800);
 }
 .delete-button:hover {
+  cursor: pointer;
+}
+
+.delete-modal-buttons {
+  display: flex;
+  flex-direction: row;
+  justify-content: center;
+  gap: 10px;
+}
+
+.delete-modal-close-button:active {
+  background-color: var(--color-neutral-800);
+}
+.delete-modal-close-button:hover {
+  cursor: pointer;
+}
+
+.delete-modal-cancel-button:active {
+  background-color: var(--color-neutral-800);
+}
+.delete-modal-cancel-button:hover {
   cursor: pointer;
 }
 </style>
