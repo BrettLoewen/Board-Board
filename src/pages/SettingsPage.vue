@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, reactive, ref } from "vue";
+import { useColorMode } from "@vueuse/core";
 import { ROUTES } from "@/constants";
 import router from "@/router";
 import { useAuthStore } from "@/stores/auth";
@@ -7,18 +8,19 @@ import { supabase } from "@/lib/supabaseClient";
 import type { FormError, FormSubmitEvent, SelectItem } from "@nuxt/ui";
 
 const auth = useAuthStore();
+const colorMode = useColorMode();
 
 // Store the user's settings data
 const state = reactive({
   username: undefined,
-  colorMode: undefined,
+  colorMode: colorMode.value,
 });
 
 // Define the options for the color mode select dropdown
 const colorModeItems = ref<SelectItem[]>([
   {
     label: "System",
-    value: "system",
+    value: "auto",
     icon: "i-lucide-monitor",
   },
   {
@@ -55,6 +57,9 @@ function validate(data: typeof state): FormError[] {
   if (data.username && (data.username as string)?.length < 3) {
     errors.push({ name: "username", message: "Username too short!" });
   }
+
+  // Update the color mode of the site to match the dropdown
+  colorMode.value = data.colorMode;
 
   return errors;
 }
