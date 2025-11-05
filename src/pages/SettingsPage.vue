@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, reactive, ref } from "vue";
+import { computed, onMounted, reactive, ref } from "vue";
 import { useColorMode } from "@vueuse/core";
 import { ROUTES } from "@/constants";
 import router from "@/router";
@@ -43,8 +43,33 @@ const colorModeIcon = computed(
     )?.icon,
 );
 
+// Fetch the user's preferences and return them
+async function getUserPreferences(): Promise<
+  { colorMode: "light" | "dark" | "auto" | undefined } | undefined
+> {
+  const { data } = await supabase.from("user_preferences").select().eq("user_id", auth.profile?.id);
+  if (data) {
+    return { colorMode: data[0]?.color_mode ? data[0]?.color_mode : "auto" };
+  }
+  return undefined;
+}
+
+// Get the user's preferences, apply them, and store them in state
+async function applyUserPreferences(): Promise<void> {
+  const data = await getUserPreferences();
+
+  // Apply the user's color mode preference
+  if (data && data.colorMode) {
+    state.colorMode = data.colorMode;
+    colorMode.value = state.colorMode;
+  }
+}
+
 // Return the user to the dashboard page
-function toDashboardPage(): void {
+async function toDashboardPage(): Promise<void> {
+  // Undo any preferences changes that were not saved when exiting the settings page
+  await applyUserPreferences();
+
   router.push(ROUTES.DASHBOARD);
 }
 
@@ -67,18 +92,40 @@ function validate(data: typeof state): FormError[] {
 async function submit(payload: FormSubmitEvent<typeof state>): Promise<void> {
   console.log("submit: " + JSON.stringify(payload.data));
 
-  // If a new username was entered, update the user's username
-  if (payload.data.username && (payload.data.username as string)?.length >= 3 && auth.user) {
-    await supabase
-      .from("user_profiles")
-      .update({ username: payload.data.username })
-      .eq("id", auth.user.id);
+  if (auth.user) {
+    // If a new username was entered, update the user's username
+    if (payload.data.username && (payload.data.username as string)?.length >= 3) {
+      await supabase
+        .from("user_profiles")
+        .update({ username: payload.data.username })
+        .eq("id", auth.user.id);
+    }
+
+    const preferences = await getUserPreferences();
+
+    // If the color mode entered in the settings form differs from the saved on, update the user's color mode preference
+    if (preferences && preferences.colorMode !== payload.data.colorMode) {
+      await supabase
+        .from("user_preferences")
+        .update({ color_mode: payload.data.colorMode })
+        .eq("user_id", auth.user.id);
+    } else {
+      console.log("color mode didn't change, not updating");
+    }
   }
 }
 
 async function deleteAccount(): Promise<void> {
+  // Undo any preferences changes that were not saved when exiting the settings page
+  await applyUserPreferences();
+
   await auth.deleteAccount();
 }
+
+onMounted(async () => {
+  // Get the user's preferences and apply them to the app and settings state
+  await applyUserPreferences();
+});
 </script>
 
 <template>
@@ -99,7 +146,7 @@ async function deleteAccount(): Promise<void> {
         />
       </UFormField>
 
-      <UFormField label="Change Color Mode" name="colorMode">
+      <UFormField label="Change Theme" name="colorMode">
         <USelect
           :items="colorModeItems"
           :icon="colorModeIcon"
