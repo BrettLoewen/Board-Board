@@ -15,6 +15,8 @@ const state = reactive({
   username: undefined,
   colorMode: colorMode.value,
 });
+// Store whether there are differences between the settings form's fields and the user's stored data
+const changesMade = ref<boolean>(false);
 
 // Define the options for the color mode select dropdown
 const colorModeItems = ref<SelectItem[]>([
@@ -74,7 +76,7 @@ async function toDashboardPage(): Promise<void> {
 }
 
 // Used to validate the form fields during edits and before the final submission
-function validate(data: typeof state): FormError[] {
+async function validate(data: typeof state): Promise<FormError[]> {
   const errors: FormError[] = [];
   console.log("validate: " + JSON.stringify(data));
 
@@ -85,6 +87,9 @@ function validate(data: typeof state): FormError[] {
 
   // Update the color mode of the site to match the dropdown
   colorMode.value = data.colorMode;
+
+  // Check if any changes have been made to the user's preferences (so the undo button is correct)
+  await checkForChanges();
 
   return errors;
 }
@@ -112,7 +117,45 @@ async function submit(payload: FormSubmitEvent<typeof state>): Promise<void> {
     } else {
       console.log("color mode didn't change, not updating");
     }
+
+    // Reset the username field now that the changes have been saved
+    state.username = undefined;
+
+    // Update the change tracking flag now that the changes have been saved
+    await checkForChanges();
   }
+}
+
+async function checkForChanges(): Promise<void> {
+  // Get the user's current preferences to see if the new settings are different
+  const preferences = await getUserPreferences();
+  if (preferences) {
+    // If the color mode being set differs from the currently saved color mode, changes have been made
+    if (preferences.colorMode !== state.colorMode) {
+      changesMade.value = true;
+      return;
+    }
+  }
+
+  // If the username being set differs from the currently saved username, changes have been made
+  if (auth.profile?.username && state.username && state.username !== auth.profile?.username) {
+    changesMade.value = true;
+    return;
+  }
+
+  // If no changes were found, store that result
+  changesMade.value = false;
+}
+
+async function undoChanges(): Promise<void> {
+  // Undo the preferences by applying the saved preferences
+  await applyUserPreferences();
+
+  // Clear the username field's value
+  state.username = undefined;
+
+  // Update the changesMade state with the cleared changes
+  await checkForChanges();
 }
 
 async function deleteAccount(): Promise<void> {
@@ -129,11 +172,48 @@ onMounted(async () => {
 </script>
 
 <template>
-  <UButton class="back-button" variant="ghost" color="neutral" size="xs" @click="toDashboardPage">
+  <UButton
+    v-if="!changesMade"
+    class="back-button"
+    variant="ghost"
+    color="neutral"
+    size="xs"
+    @click="toDashboardPage"
+  >
     <template #leading>
       <UIcon name="i-ion-arrow-back-circle-outline" class="w-10 h-10" />
     </template>
   </UButton>
+  <UModal
+    v-else
+    title="Undo your changes?"
+    description="You have unsaved changes to your settings. Are you sure you want to revert to your last saved settings?"
+    :close="{ class: 'modal-close-button' }"
+  >
+    <UButton class="back-button" variant="ghost" color="neutral" size="xs">
+      <template #leading>
+        <UIcon name="i-ion-arrow-back-circle-outline" class="w-10 h-10" />
+      </template>
+    </UButton>
+
+    <template #body="{ close }">
+      <div class="modal-buttons">
+        <UButton
+          color="error"
+          label="Quit without saving"
+          class="delete-button"
+          @click="toDashboardPage"
+        />
+        <UButton
+          color="neutral"
+          variant="outline"
+          label="Cancel"
+          class="modal-cancel-button"
+          @click="close"
+        />
+      </div>
+    </template>
+  </UModal>
 
   <div class="center">
     <h1>Settings</h1>
@@ -155,7 +235,18 @@ onMounted(async () => {
           class="w-48"
         />
       </UFormField>
-      <UButton type="submit" class="save-button">Save Changes</UButton>
+      <div class="horizontal-layout">
+        <UButton type="submit" class="save-button">Save Changes</UButton>
+        <UButton
+          :disabled="!changesMade"
+          :variant="changesMade ? 'outline' : 'soft'"
+          color="neutral"
+          :class="changesMade ? 'undo-button' : ''"
+          @click="undoChanges"
+        >
+          Undo Changes
+        </UButton>
+      </div>
     </UForm>
 
     <USeparator
@@ -168,18 +259,18 @@ onMounted(async () => {
       <UModal
         title="Delete your Account"
         description="This action cannot be reversed. Are you sure you want to delete your account?"
-        :close="{ class: 'delete-modal-close-button' }"
+        :close="{ class: 'modal-close-button' }"
       >
         <UButton color="error" class="delete-button">Delete Account</UButton>
 
         <template #body="{ close }">
-          <div class="delete-modal-buttons">
+          <div class="modal-buttons">
             <UButton color="error" label="Delete" class="delete-button" @click="deleteAccount" />
             <UButton
               color="neutral"
               variant="outline"
               label="Cancel"
-              class="delete-modal-cancel-button"
+              class="modal-cancel-button"
               @click="close"
             />
           </div>
@@ -225,10 +316,24 @@ onMounted(async () => {
   gap: 15px;
 }
 
+.horizontal-layout {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 15px;
+}
+
 .save-button:active {
   background-color: var(--color-primary-800);
 }
 .save-button:hover {
+  cursor: pointer;
+}
+
+.undo-button:active {
+  background-color: var(--color-neutral-600);
+}
+.undo-button:hover {
   cursor: pointer;
 }
 
@@ -244,24 +349,24 @@ onMounted(async () => {
   cursor: pointer;
 }
 
-.delete-modal-buttons {
+.modal-buttons {
   display: flex;
   flex-direction: row;
   justify-content: center;
   gap: 10px;
 }
 
-.delete-modal-close-button:active {
+.modal-close-button:active {
   background-color: var(--color-neutral-800);
 }
-.delete-modal-close-button:hover {
+.modal-close-button:hover {
   cursor: pointer;
 }
 
-.delete-modal-cancel-button:active {
+.modal-cancel-button:active {
   background-color: var(--color-neutral-800);
 }
-.delete-modal-cancel-button:hover {
+.modal-cancel-button:hover {
   cursor: pointer;
 }
 </style>
