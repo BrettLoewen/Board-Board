@@ -159,9 +159,11 @@ async function undoChanges(): Promise<void> {
 }
 
 async function deleteAccount(): Promise<void> {
-  // Undo any preferences changes that were not saved when exiting the settings page
-  await applyUserPreferences();
+  // Undo any preferences changes that were from the logged in user.
+  // The color mode changing back to 'auto' will happen in the auth.deleteAccount logic.
+  state.username = undefined;
 
+  // Delete the account and logout the user
   await auth.deleteAccount();
 }
 

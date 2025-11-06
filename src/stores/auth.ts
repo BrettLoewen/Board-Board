@@ -1,9 +1,12 @@
 import { defineStore } from "pinia";
 import { type User, type Session } from "@supabase/supabase-js";
+import { useColorMode } from "@vueuse/core";
 import { supabase } from "@/lib/supabaseClient";
 import { ref } from "vue";
 import router from "@/router";
 import { ROUTES } from "@/constants";
+
+const colorMode = useColorMode();
 
 // Create the auth store that will be used to handle authentication with supabase throughout the application
 export const useAuthStore = defineStore("auth", () => {
@@ -67,6 +70,17 @@ export const useAuthStore = defineStore("auth", () => {
 
     // Store the profile data
     profile.value = data;
+
+    // Get and set the user's preference settings
+    const { data: preferences } = await supabase
+      .from("user_preferences")
+      .select()
+      .eq("user_id", data.id);
+    if (preferences) {
+      if (preferences && preferences[0]?.color_mode) {
+        colorMode.value = preferences[0].color_mode;
+      }
+    }
   };
 
   const signup = async (username: string, email: string, password: string) => {
@@ -104,6 +118,9 @@ export const useAuthStore = defineStore("auth", () => {
     user.value = null;
     session.value = null;
     profile.value = null;
+
+    // Clear user preferences that could carry over to the logged out state
+    colorMode.value = "auto";
 
     // Return the user to the welcome page so they
     // A) Can log in with the same or a different account if they wish
