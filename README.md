@@ -13,3 +13,4 @@ A WIP full stack application based on the prototype I made, found [here](https:/
 - [Supabase CLI](https://supabase.com/docs/reference/cli/global-flags)
 - [Supabase Realtime](https://supabase.com/docs/guides/realtime)
 - [interact.js](https://interactjs.io/docs/)
+- [Playwright](https://playwright.dev/)

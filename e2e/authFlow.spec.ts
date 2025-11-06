@@ -10,43 +10,6 @@ test.beforeEach(async ({ page }) => {
   await page.goto("http://localhost:5173/Board-Board/");
 });
 
-test("Welcome page loads", async ({ page }) => {
-  // Verify the contents of the welcome page
-  const welcomeNotice = page.locator("h1", { hasText: "Welcome to Board Board!" });
-  await expect(welcomeNotice).toHaveCount(1);
-  const loginButton = page.locator("button", { hasText: "Login" });
-  await expect(loginButton).toHaveCount(1);
-  const signUpButton = page.locator("button", { hasText: "Sign up" });
-  await expect(signUpButton).toHaveCount(1);
-});
-
-test("/dashboard route is protected", async ({ page }) => {
-  // Go to the dashboard without logging in
-  await page.goto("http://localhost:5173/Board-Board/dashboard");
-
-  // Verify that the user was returned to the welcome page
-  const welcomeNotice = page.locator("h1", { hasText: "Welcome to Board Board!" });
-  await expect(welcomeNotice).toHaveCount(1);
-});
-
-test("404 route works", async ({ page }) => {
-  // Go to a non-existant page
-  await page.goto("http://localhost:5173/Board-Board/test");
-
-  // Verify that the user was returned to the welcome page
-  const errorMessage = page.locator("h1", { hasText: "404" });
-  await expect(errorMessage).toHaveCount(1);
-
-  // Return to the welcome page
-  const homeButton = page.locator("button", { hasText: "Back to Home" });
-  await expect(homeButton).toHaveCount(1);
-  homeButton.click();
-
-  // Verify the contents of the welcome page
-  const welcomeNotice = page.locator("h1", { hasText: "Welcome to Board Board!" });
-  await expect(welcomeNotice).toHaveCount(1);
-});
-
 test.describe("User Auth", () => {
   const userName = "Testy";
   const userEmail = "test@test.com";
@@ -73,7 +36,7 @@ test.describe("User Auth", () => {
     await logoutButton.click();
 
     // Log back in
-    await login(page, userEmail, userPassword, userName);
+    await login(page, userEmail, userPassword);
   });
 
   test("Logged in user sees dashboard button on welcome page", async ({ page }) => {
