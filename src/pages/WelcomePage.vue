@@ -9,23 +9,15 @@ const auth = useAuthStore();
 
 // Track the state of the auth panel. Start with it hidden/inactive
 const mode = ref(AUTH.MODES.LOGIN);
-const authPanelActive = ref(false);
-
-// Hide the auth panel
-function onCloseAuth() {
-  authPanelActive.value = false;
-}
 
 // Open the auth panel in the LOGIN state
 function login() {
   mode.value = AUTH.MODES.LOGIN;
-  authPanelActive.value = true;
 }
 
 // Open the auth panel in the SIGN_UP state
 function signUp() {
   mode.value = AUTH.MODES.SIGN_UP;
-  authPanelActive.value = true;
 }
 
 // Send the user to the dashboard page
@@ -43,12 +35,17 @@ function dashboard() {
     <div v-if="auth.profile" class="auth-layout">
       <UButton class="auth-button" @click="dashboard">Go to Dashboard</UButton>
     </div>
-    <div v-else class="auth-layout">
-      <UButton class="auth-button" @click="login">Login</UButton>
-      <UButton class="auth-button" @click="signUp">Sign Up</UButton>
-    </div>
+    <UModal>
+      <div v-if="!auth.profile" class="auth-layout">
+        <UButton class="auth-button" @click="login">Login</UButton>
+        <UButton class="auth-button" @click="signUp">Sign Up</UButton>
+      </div>
+
+      <template #content>
+        <AuthPanel :mode="mode" />
+      </template>
+    </UModal>
   </div>
-  <AuthPanel v-if="authPanelActive" :mode="mode" @close-auth="onCloseAuth" />
 </template>
 
 <style>

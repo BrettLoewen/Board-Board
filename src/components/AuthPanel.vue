@@ -10,9 +10,6 @@ const props = defineProps({ mode: { type: String, default: AUTH.MODES.LOGIN } })
 const mode = ref<string>(props.mode);
 const valid = ref<string>(AUTH.VALIDATION.VALID);
 
-// The parent component controls the auth panel's visibility, so inform the parent component that the panel should be closed
-const emit = defineEmits(["closeAuth"]);
-
 const auth = useAuthStore();
 
 // Define the fields used by the Nuxt UI AuthForm for the login mode
@@ -134,12 +131,6 @@ async function onSubmit(
   }
 }
 
-// If the user clicked to close the auth panel, inform the parent component to close the panel
-function closeAuth(): void {
-  valid.value = AUTH.VALIDATION.VALID;
-  emit("closeAuth");
-}
-
 // Toggle between the login and sign up auth panel modes
 function switchAuthMode(): void {
   if (mode.value === AUTH.MODES.LOGIN) {
@@ -151,86 +142,70 @@ function switchAuthMode(): void {
 </script>
 
 <template>
-  <div class="fill" @mousedown="closeAuth">
-    <UPageCard class="panel">
-      <UAuthForm
-        :fields="fields()"
-        :title="formTitle()"
-        icon="i-lucide-lock"
-        @submit="onSubmit"
-        @mousedown.stop
-      >
-        <template v-if="mode === AUTH.MODES.LOGIN" #description>
-          Don't have an account?
-          <ULink to="/" as="button" @click="switchAuthMode" class="text-primary font-medium"
-            >Sign up</ULink
-          >.
-        </template>
-        <template v-else #description>
-          Already have an account?
-          <ULink to="/" as="button" @click="switchAuthMode" class="text-primary font-medium"
-            >Login</ULink
-          >.
-        </template>
-        <template v-if="valid === AUTH.VALIDATION.INVALID" #validation>
-          <UAlert
-            class="alert"
-            icon="i-lucide-info"
-            variant="subtle"
-            color="error"
-            :description="AUTH.MESSAGES.INVALID"
-          />
-        </template>
-        <template v-else-if="valid === AUTH.VALIDATION.WEAK_PASSWORD" #validation>
-          <UAlert
-            class="alert"
-            icon="i-lucide-info"
-            variant="subtle"
-            color="error"
-            :description="AUTH.MESSAGES.WEAK_PASSWORD"
-          />
-        </template>
-        <template v-else-if="valid === AUTH.VALIDATION.MISSING_FIELD" #validation>
-          <UAlert
-            class="alert"
-            icon="i-lucide-info"
-            variant="subtle"
-            color="error"
-            :description="AUTH.MESSAGES.MISSING_FIELD"
-          />
-        </template>
-        <template v-else-if="valid === AUTH.VALIDATION.INVALID_USERNAME" #validation>
-          <UAlert
-            class="alert"
-            icon="i-lucide-info"
-            variant="subtle"
-            color="error"
-            :description="AUTH.MESSAGES.INVALID_USERNAME"
-          />
-        </template>
-        <template #submit>
-          <UButton type="submit" class="continue-button">Continue</UButton>
-        </template>
-      </UAuthForm>
-    </UPageCard>
-  </div>
+  <UPageCard>
+    <UAuthForm
+      :fields="fields()"
+      :title="formTitle()"
+      icon="i-lucide-lock"
+      @submit="onSubmit"
+      @mousedown.stop
+    >
+      <template v-if="mode === AUTH.MODES.LOGIN" #description>
+        Don't have an account?
+        <ULink to="/" as="button" @click="switchAuthMode" class="text-primary font-medium"
+          >Sign up</ULink
+        >.
+      </template>
+      <template v-else #description>
+        Already have an account?
+        <ULink to="/" as="button" @click="switchAuthMode" class="text-primary font-medium"
+          >Login</ULink
+        >.
+      </template>
+      <template v-if="valid === AUTH.VALIDATION.INVALID" #validation>
+        <UAlert
+          class="alert"
+          icon="i-lucide-info"
+          variant="subtle"
+          color="error"
+          :description="AUTH.MESSAGES.INVALID"
+        />
+      </template>
+      <template v-else-if="valid === AUTH.VALIDATION.WEAK_PASSWORD" #validation>
+        <UAlert
+          class="alert"
+          icon="i-lucide-info"
+          variant="subtle"
+          color="error"
+          :description="AUTH.MESSAGES.WEAK_PASSWORD"
+        />
+      </template>
+      <template v-else-if="valid === AUTH.VALIDATION.MISSING_FIELD" #validation>
+        <UAlert
+          class="alert"
+          icon="i-lucide-info"
+          variant="subtle"
+          color="error"
+          :description="AUTH.MESSAGES.MISSING_FIELD"
+        />
+      </template>
+      <template v-else-if="valid === AUTH.VALIDATION.INVALID_USERNAME" #validation>
+        <UAlert
+          class="alert"
+          icon="i-lucide-info"
+          variant="subtle"
+          color="error"
+          :description="AUTH.MESSAGES.INVALID_USERNAME"
+        />
+      </template>
+      <template #submit>
+        <UButton type="submit" class="continue-button">Continue</UButton>
+      </template>
+    </UAuthForm>
+  </UPageCard>
 </template>
 
 <style>
-.fill {
-  display: flex;
-  justify-content: center;
-  width: 100%;
-  height: 100%;
-  background-color: rgba(0, 0, 0, 0.6);
-  backdrop-filter: blur(4px);
-}
-
-.panel {
-  margin: 10rem;
-  min-width: 25rem;
-}
-
 .alert {
   align-items: center;
   height: 2rem;
