@@ -5,6 +5,7 @@ import {
   signUpToSettingsPage,
   navigateToSettingsPageFromDashboard,
 } from "./utils";
+import { AUTH } from "../src/constants.ts";
 
 // For every test...
 // Ensure a fresh database exists
@@ -495,18 +496,162 @@ test.describe("Settings Page", () => {
   });
 
   test("Short usernames show error text", async ({ page }) => {
-    expect(page).toBe(false);
+    const newUsername = "Te";
+
+    // Sign up a new user and verify that the settings page is reachable
+    await signUpToSettingsPage(page, userEmail, userPassword, userName);
+
+    // Enter the new username
+    const usernameInput = page.locator('input[name="username"]');
+    await expect(usernameInput).toHaveAttribute("placeholder", userName);
+    await expect(usernameInput).toBeVisible();
+    await expect(usernameInput).toHaveCount(1);
+    await usernameInput.fill(newUsername);
+
+    // Exit out of the input field.
+    // This will validate the new username and enable the undo button.
+    // The code overrides the default behaviour to submit on Enter, so this is fine.
+    await page.keyboard.press("Enter");
+
+    // Verify that an error appeared telling the user that the entered username is too short
+    const usernameError = page.getByText("Username too short!");
+    await expect(usernameError).toBeVisible();
+    await expect(usernameError).toHaveCount(1);
   });
 
   test("Short usernames cannot be saved", async ({ page }) => {
-    expect(page).toBe(false);
+    const newUsername = "Te";
+
+    // Sign up a new user and verify that the settings page is reachable
+    await signUpToSettingsPage(page, userEmail, userPassword, userName);
+
+    // Enter the new username
+    let usernameInput = page.locator('input[name="username"]');
+    await expect(usernameInput).toHaveAttribute("placeholder", userName);
+    await expect(usernameInput).toBeVisible();
+    await expect(usernameInput).toHaveCount(1);
+    await usernameInput.fill(newUsername);
+
+    // Exit out of the input field.
+    // This will validate the new username and enable the undo button.
+    // The code overrides the default behaviour to submit on Enter, so this is fine.
+    await page.keyboard.press("Enter");
+
+    // Verify that an error appeared telling the user that the entered username is too short
+    const usernameError = page.getByText("Username too short!");
+    await expect(usernameError).toBeVisible();
+    await expect(usernameError).toHaveCount(1);
+
+    // Attempt to save the new username
+    const saveButton = page.locator("button", { hasText: "Save Changes" });
+    await expect(saveButton).toBeVisible();
+    await expect(saveButton).toHaveCount(1);
+    await saveButton.click();
+
+    // Expect the undo button to be enabled because the change wasn't saved (so it wasn't cleared)
+    const undoButton = page.locator("button", { hasText: "Undo Changes" });
+    await expect(undoButton).toBeVisible();
+    await expect(undoButton).toHaveCount(1);
+    await expect(undoButton).not.toBeDisabled();
+    await undoButton.click();
+
+    // Return to the dashboard
+    const backButton = page.locator("button.back-button");
+    await expect(backButton).toBeVisible();
+    await expect(backButton).toHaveCount(1);
+    await backButton.click();
+
+    // Return to the settings page
+    await navigateToSettingsPageFromDashboard(page);
+
+    // Verify that the old username is being used as the placeholder (verify that the new username was not saved)
+    usernameInput = page.locator('input[name="username"]');
+    await expect(usernameInput).toHaveAttribute("placeholder", userName);
+    await expect(usernameInput).toBeVisible();
+    await expect(usernameInput).toHaveCount(1);
   });
 
   test("Account can be deleted", async ({ page }) => {
-    expect(page).toBe(false);
+    // Sign up a new user and verify that the settings page is reachable
+    await signUpToSettingsPage(page, userEmail, userPassword, userName);
+
+    // Click the delete account button
+    const deleteButton = page.locator("button", { hasText: "Delete Account" });
+    await expect(deleteButton).toBeVisible();
+    await expect(deleteButton).toHaveCount(1);
+    await deleteButton.click();
+
+    // Verify that the unsaved changes popup modal opened
+    const deleteAccountModalHeader = page.getByRole("heading", { name: "Delete your Account" });
+    await expect(deleteAccountModalHeader).toBeVisible();
+    await expect(deleteAccountModalHeader).toHaveCount(1);
+    const deleteAccountModalConfirm = page.getByRole("button", { name: "Delete" });
+    await expect(deleteAccountModalConfirm).toBeVisible();
+    await expect(deleteAccountModalConfirm).toHaveCount(1);
+    const deleteAccountModalCancel = page.getByRole("button", { name: "Cancel" });
+    await expect(deleteAccountModalCancel).toBeVisible();
+    await expect(deleteAccountModalCancel).toHaveCount(1);
+
+    // Delete the account
+    await deleteAccountModalConfirm.click();
+
+    // Verify the contents of the welcome page (verify the user was logged out after deleting their account)
+    const welcomeNotice = page.locator("h1", { hasText: "Welcome to Board Board!" });
+    await expect(welcomeNotice).toHaveCount(1);
+    const loginButton = page.locator("button", { hasText: "Login" });
+    await expect(loginButton).toHaveCount(1);
+    const signUpButton = page.locator("button", { hasText: "Sign up" });
+    await expect(signUpButton).toHaveCount(1);
+
+    // Open the login form
+    await loginButton.click();
+
+    // Enter the test user's info
+    const emailInput = page.locator('input[name="email"]');
+    await emailInput.fill(userEmail);
+    const passwordInput = page.locator('input[name="password"]');
+    await passwordInput.fill(userPassword);
+
+    // Submit the login form
+    await page.keyboard.press("Enter");
+
+    // Verfiy the correct error message was displayed
+    const errorMessage = page.locator(
+      "div.relative.overflow-hidden.w-full.rounded-lg.p-4.flex.gap-2\\.5.items-start.bg-error\\/10.text-error.ring.ring-inset.ring-error\\/25.alert",
+      {
+        hasText: AUTH.MESSAGES.INVALID,
+      },
+    );
+    await expect(errorMessage).toBeVisible();
+    await expect(errorMessage).toHaveCount(1);
   });
 
   test("Account deletion modal can be closed without deleting the account", async ({ page }) => {
-    expect(page).toBe(false);
+    // Sign up a new user and verify that the settings page is reachable
+    await signUpToSettingsPage(page, userEmail, userPassword, userName);
+
+    // Click the delete account button
+    const deleteButton = page.locator("button", { hasText: "Delete Account" });
+    await expect(deleteButton).toBeVisible();
+    await expect(deleteButton).toHaveCount(1);
+    await deleteButton.click();
+
+    // Verify that the unsaved changes popup modal opened
+    const deleteAccountModalHeader = page.getByRole("heading", { name: "Delete your Account" });
+    await expect(deleteAccountModalHeader).toBeVisible();
+    await expect(deleteAccountModalHeader).toHaveCount(1);
+    const deleteAccountModalConfirm = page.getByRole("button", { name: "Delete" });
+    await expect(deleteAccountModalConfirm).toBeVisible();
+    await expect(deleteAccountModalConfirm).toHaveCount(1);
+    const deleteAccountModalCancel = page.getByRole("button", { name: "Cancel" });
+    await expect(deleteAccountModalCancel).toBeVisible();
+    await expect(deleteAccountModalCancel).toHaveCount(1);
+
+    // Cancel the delete action
+    await deleteAccountModalCancel.click();
+
+    // Verify that the settings page is still open (verify the user was not logged out due to a deleted account)
+    const settingsPageHeader = page.locator("h1", { hasText: "Settings" });
+    await expect(settingsPageHeader).toHaveCount(1);
   });
 });

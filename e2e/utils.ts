@@ -102,14 +102,14 @@ export async function signUpToSettingsPage(
   await signUp(page, userEmail, userPassword, userName);
 
   // Open the user dropdown, click the settings button, and verify the settings page was reached
-  navigateToSettingsPageFromDashboard(page);
+  await navigateToSettingsPageFromDashboard(page);
 }
 
 export async function navigateToSettingsPageFromDashboard(page) {
   // Open the user dropdown
   const userButton = page.locator("button.navbar-right-button");
   await expect(userButton).toHaveCount(1);
-  userButton.click();
+  await userButton.click();
 
   // Verify the settings button exists and click it
   const settingsButton = page.locator("a", { hasText: "Settings" });
