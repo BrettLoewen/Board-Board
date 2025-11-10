@@ -30,6 +30,9 @@ export default defineConfig({
 
     /* Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer */
     trace: "on-first-retry",
+
+    // Guarantee the tests will always be run in light mode
+    colorScheme: "light",
   },
 
   /* Configure projects for major browsers */

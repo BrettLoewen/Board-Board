@@ -91,3 +91,33 @@ export async function verifyDashboardReached(page: Page) {
   // Close the user dropdown so further testing doesn't break
   await page.keyboard.press("Escape");
 }
+
+export async function signUpToSettingsPage(
+  page: Page,
+  userEmail: string,
+  userPassword: string,
+  userName: string,
+) {
+  // Sign up
+  await signUp(page, userEmail, userPassword, userName);
+
+  // Open the user dropdown, click the settings button, and verify the settings page was reached
+  navigateToSettingsPageFromDashboard(page);
+}
+
+export async function navigateToSettingsPageFromDashboard(page) {
+  // Open the user dropdown
+  const userButton = page.locator("button.navbar-right-button");
+  await expect(userButton).toHaveCount(1);
+  userButton.click();
+
+  // Verify the settings button exists and click it
+  const settingsButton = page.locator("a", { hasText: "Settings" });
+  await expect(settingsButton).toBeVisible();
+  await expect(settingsButton).toHaveCount(1);
+  await settingsButton.click();
+
+  // Verify that the settings page was reached
+  const settingsPageHeader = page.locator("h1", { hasText: "Settings" });
+  await expect(settingsPageHeader).toHaveCount(1);
+}

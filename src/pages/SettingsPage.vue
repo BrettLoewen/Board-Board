@@ -100,10 +100,14 @@ async function submit(payload: FormSubmitEvent<typeof state>): Promise<void> {
   if (auth.user) {
     // If a new username was entered, update the user's username
     if (payload.data.username && (payload.data.username as string)?.length >= 3) {
+      // Update the username
       await supabase
         .from("user_profiles")
         .update({ username: payload.data.username })
         .eq("id", auth.user.id);
+
+      // Fetch and store the updated user data
+      await auth.fetchProfile();
     }
 
     const preferences = await getUserPreferences();
@@ -167,6 +171,12 @@ async function deleteAccount(): Promise<void> {
   await auth.deleteAccount();
 }
 
+// Exit an input field instead of submitting the form
+function blurInput(e: KeyboardEvent) {
+  const target = e.target as HTMLInputElement;
+  target.blur();
+}
+
 onMounted(async () => {
   // Get the user's preferences and apply them to the app and settings state
   await applyUserPreferences();
@@ -225,6 +235,7 @@ onMounted(async () => {
         <UInput
           :placeholder="auth.profile ? auth.profile.username : 'Username'"
           v-model="state.username"
+          @keydown.enter.prevent="blurInput"
         />
       </UFormField>
 
