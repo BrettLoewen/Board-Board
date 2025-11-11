@@ -143,7 +143,7 @@ jobs:
         run: |
           curl -fsSL https://cli.supabase.com/install.sh | sh -s -- -b /usr/local/bin
 
-      - name: Push Supabase migrations to production
+      - name: Push Supabase migrations and edge functions to production
         if: matrix.target == 'database'
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
@@ -151,6 +151,7 @@ jobs:
         run: |
           npx supabase link --project-ref ubgqdzmqlnbhqbklotwc --password $SUPABASE_DB_PASSWORD
           npx supabase db push
+          npx supabase functions deploy delete-user
 
   # Print results.
   # Prints "✅ Both deployments succeeded!" if both web and database deployments passed.

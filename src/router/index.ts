@@ -6,14 +6,18 @@ import DashboardPage from "@/pages/DashboardPage.vue";
 import WelcomePage from "@/pages/WelcomePage.vue";
 import EmailConfirmationPage from "@/pages/EmailConfirmationPage.vue";
 import NotFoundPage from "@/pages/NotFoundPage.vue";
+import FriendsPage from "@/pages/FriendsPage.vue";
+import SettingsPage from "@/pages/SettingsPage.vue";
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes: [
+    { path: ROUTES.NOT_FOUND, component: NotFoundPage },
     { path: ROUTES.ROOT, component: WelcomePage },
     { path: ROUTES.EMAIL, component: EmailConfirmationPage },
     { path: ROUTES.DASHBOARD, component: DashboardPage, meta: { requiresAuth: true } },
-    { path: ROUTES.NOT_FOUND, component: NotFoundPage },
+    { path: ROUTES.FRIENDS, component: FriendsPage, meta: { requiresAuth: true } },
+    { path: ROUTES.SETTINGS, component: SettingsPage, meta: { requiresAuth: true } },
   ],
 });
 
@@ -23,7 +27,7 @@ router.beforeEach(async (to) => {
 
   // If it does not, continue to the route
   if (!requiresAuth) {
-    console.log("not protected route " + to.fullPath);
+    // console.log("not protected route " + to.fullPath);
     return true;
   }
   // If it does, check if the user is authenticated
@@ -37,15 +41,15 @@ router.beforeEach(async (to) => {
 
     // Attempt to get session from supabase client (in case the user should be signed in but isn't) (in case page refreshed)
     const { data } = await supabase.auth.getSession();
-    const s = data?.session ?? null;
+    const session = data?.session ?? null;
     // If the user was found, continue to the route
-    if (s?.user) {
+    if (session?.user) {
       await auth.fetchProfile();
       return true;
     }
 
     // If the user was unable to be authenticated, return the site's homepage
-    console.log("not authenticated " + to.fullPath);
+    // console.log("not authenticated " + to.fullPath);
     return ROUTES.ROOT;
   }
 });

@@ -5,14 +5,14 @@ import { useAuthStore } from "@/stores/auth";
 import { ref } from "vue";
 import type { FormSubmitEvent, AuthFormField } from "@nuxt/ui";
 
+// Track the state of the auth panel
 const props = defineProps({ mode: { type: String, default: AUTH.MODES.LOGIN } });
 const mode = ref<string>(props.mode);
 const valid = ref<string>(AUTH.VALIDATION.VALID);
 
-const emit = defineEmits(["closeAuth"]);
-
 const auth = useAuthStore();
 
+// Define the fields used by the Nuxt UI AuthForm for the login mode
 const loginFields: AuthFormField[] = [
   {
     name: "email",
@@ -30,6 +30,7 @@ const loginFields: AuthFormField[] = [
   },
 ];
 
+// Define the fields used by the Nuxt UI AuthForm for the sign up mode (includes the login fields)
 const signUpFields: AuthFormField[] = [
   {
     name: "username",
@@ -41,7 +42,8 @@ const signUpFields: AuthFormField[] = [
   ...loginFields,
 ];
 
-function fields() {
+// Return the form fields based on the auth panel's current state
+function fields(): AuthFormField[] {
   if (mode.value === AUTH.MODES.LOGIN) {
     return loginFields;
   } else {
@@ -49,33 +51,66 @@ function fields() {
   }
 }
 
+// Return the form title based on the auth panel's current state
+function formTitle(): string {
+  if (mode.value === AUTH.MODES.LOGIN) {
+    return "Login";
+  } else if (mode.value === AUTH.MODES.SIGN_UP) {
+    return "Sign Up";
+  } else {
+    return "";
+  }
+}
+
+function checkFormFields(
+  payload: FormSubmitEvent<{ username: string; email: string; password: string }>,
+): boolean {
+  // If the user is trying to login, check email and password
+  if (mode.value === AUTH.MODES.LOGIN) {
+    return !!payload.data.email && !!payload.data.password;
+  }
+  // If the user is trying to sign up, check username, email, and password
+  else {
+    return !!payload.data.username && !!payload.data.email && !!payload.data.password;
+  }
+}
+
 async function onSubmit(
   payload: FormSubmitEvent<{ username: string; email: string; password: string }>,
-) {
-  console.log("Submitted", payload.data);
-  if (mode.value === AUTH.MODES.LOGIN || (payload.data.username && payload.data.username !== "")) {
+): Promise<void> {
+  // console.log("Submitted", payload.data);
+  // Check if all values were included.
+  if (checkFormFields(payload)) {
     try {
+      // In login mode, attempt to login the user
       if (mode.value === AUTH.MODES.LOGIN) {
         await auth.login(payload.data.email, payload.data.password);
-        // If your local env has email confirmations off, the user may be signed in immediately.
-        // In prod, Supabase may send confirmation email — behavior depends on project settings.
-      } else {
+      }
+      // In sign up mode, attempt to sign up the user
+      else {
         const data = await auth.signup(
           payload.data.username,
           payload.data.email,
           payload.data.password,
         );
+
+        // If a user was returned but not a session, then email confirmation is enabled and required, so send the user to the email confirmation page.
+        // Otherwise, they will also be logged in now.
         if (data.user && !data.session) {
-          console.log("email confirmation needed");
+          // console.log("email confirmation needed");
           valid.value = AUTH.VALIDATION.VALID;
           router.push(ROUTES.EMAIL);
           return;
         }
       }
-      console.log("sending to dashboard");
+      // console.log("sending to dashboard");
+
+      // If this point was reached, the user was successfully logged in, so send them to the dashboard
       valid.value = AUTH.VALIDATION.VALID;
       router.push({ path: ROUTES.DASHBOARD });
     } catch (err) {
+      // If the login or sign up operation failed, update the auth panel's state accordingly.
+      // This state will be used to show a message to the user informing them about the nature of the auth failure.
       console.log(String(err));
       if (
         String(err).includes(AUTH.ERRORS.INVALID) ||
@@ -89,27 +124,15 @@ async function onSubmit(
         valid.value = AUTH.VALIDATION.INVALID_USERNAME;
       }
     }
-  } else {
+  }
+  // If a field was missing, update the auth panel's state
+  else {
     valid.value = AUTH.VALIDATION.MISSING_FIELD;
   }
 }
 
-function formTitle() {
-  if (mode.value === AUTH.MODES.LOGIN) {
-    return "Login";
-  } else if (mode.value === AUTH.MODES.SIGN_UP) {
-    return "Sign Up";
-  } else {
-    return "";
-  }
-}
-
-function closeAuth() {
-  valid.value = AUTH.VALIDATION.VALID;
-  emit("closeAuth");
-}
-
-function switchAuthMode() {
+// Toggle between the login and sign up auth panel modes
+function switchAuthMode(): void {
   if (mode.value === AUTH.MODES.LOGIN) {
     mode.value = AUTH.MODES.SIGN_UP;
   } else {
@@ -119,85 +142,83 @@ function switchAuthMode() {
 </script>
 
 <template>
-  <div class="fill" @mousedown="closeAuth">
-    <UPageCard class="panel">
-      <UAuthForm
-        :fields="fields()"
-        :title="formTitle()"
-        icon="i-lucide-lock"
-        @submit="onSubmit"
-        @mousedown.stop
-      >
-        <template v-if="mode === AUTH.MODES.LOGIN" #description>
-          Don't have an account?
-          <ULink to="/" as="button" @click="switchAuthMode" class="text-primary font-medium"
-            >Sign up</ULink
-          >.
-        </template>
-        <template v-else #description>
-          Already have an account?
-          <ULink to="/" as="button" @click="switchAuthMode" class="text-primary font-medium"
-            >Login</ULink
-          >.
-        </template>
-        <template v-if="valid === AUTH.VALIDATION.INVALID" #validation>
-          <UAlert
-            class="alert"
-            icon="i-lucide-info"
-            variant="subtle"
-            color="error"
-            :description="AUTH.MESSAGES.INVALID"
-          />
-        </template>
-        <template v-else-if="valid === AUTH.VALIDATION.WEAK_PASSWORD" #validation>
-          <UAlert
-            class="alert"
-            icon="i-lucide-info"
-            variant="subtle"
-            color="error"
-            :description="AUTH.MESSAGES.WEAK_PASSWORD"
-          />
-        </template>
-        <template v-else-if="valid === AUTH.VALIDATION.MISSING_FIELD" #validation>
-          <UAlert
-            class="alert"
-            icon="i-lucide-info"
-            variant="subtle"
-            color="error"
-            :description="AUTH.MESSAGES.MISSING_FIELD"
-          />
-        </template>
-        <template v-else-if="valid === AUTH.VALIDATION.INVALID_USERNAME" #validation>
-          <UAlert
-            class="alert"
-            icon="i-lucide-info"
-            variant="subtle"
-            color="error"
-            :description="AUTH.MESSAGES.INVALID_USERNAME"
-          />
-        </template>
-      </UAuthForm>
-    </UPageCard>
-  </div>
+  <UPageCard>
+    <UAuthForm
+      :fields="fields()"
+      :title="formTitle()"
+      icon="i-lucide-lock"
+      @submit="onSubmit"
+      @mousedown.stop
+    >
+      <template v-if="mode === AUTH.MODES.LOGIN" #description>
+        Don't have an account?
+        <ULink to="/" as="button" @click="switchAuthMode" class="text-primary font-medium"
+          >Sign up</ULink
+        >.
+      </template>
+      <template v-else #description>
+        Already have an account?
+        <ULink to="/" as="button" @click="switchAuthMode" class="text-primary font-medium"
+          >Login</ULink
+        >.
+      </template>
+      <template v-if="valid === AUTH.VALIDATION.INVALID" #validation>
+        <UAlert
+          class="alert"
+          icon="i-lucide-info"
+          variant="subtle"
+          color="error"
+          :description="AUTH.MESSAGES.INVALID"
+        />
+      </template>
+      <template v-else-if="valid === AUTH.VALIDATION.WEAK_PASSWORD" #validation>
+        <UAlert
+          class="alert"
+          icon="i-lucide-info"
+          variant="subtle"
+          color="error"
+          :description="AUTH.MESSAGES.WEAK_PASSWORD"
+        />
+      </template>
+      <template v-else-if="valid === AUTH.VALIDATION.MISSING_FIELD" #validation>
+        <UAlert
+          class="alert"
+          icon="i-lucide-info"
+          variant="subtle"
+          color="error"
+          :description="AUTH.MESSAGES.MISSING_FIELD"
+        />
+      </template>
+      <template v-else-if="valid === AUTH.VALIDATION.INVALID_USERNAME" #validation>
+        <UAlert
+          class="alert"
+          icon="i-lucide-info"
+          variant="subtle"
+          color="error"
+          :description="AUTH.MESSAGES.INVALID_USERNAME"
+        />
+      </template>
+      <template #submit>
+        <UButton type="submit" class="continue-button">Continue</UButton>
+      </template>
+    </UAuthForm>
+  </UPageCard>
 </template>
 
 <style>
-.fill {
-  display: flex;
-  justify-content: center;
-  width: 100%;
-  height: 100%;
-  background-color: rgba(0, 0, 0, 0.6);
-  backdrop-filter: blur(4px);
-}
-
-.panel {
-  margin: 10rem;
-  min-width: 25rem;
-}
-
 .alert {
   align-items: center;
   height: 2rem;
+}
+
+.continue-button {
+  width: 100%;
+  justify-content: center;
+}
+.continue-button:hover {
+  cursor: pointer;
+}
+.continue-button:active {
+  background-color: var(--color-primary-800);
 }
 </style>

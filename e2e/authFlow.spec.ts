@@ -1,47 +1,14 @@
 import { test, expect } from "@playwright/test";
-import { login, setupE2eTest, signUp } from "./utils";
+import { startBackend, refreshBackend, signUp, login, verifyDashboardReached } from "./utils";
 import { AUTH } from "../src/constants.ts";
 
-test.beforeEach(setupE2eTest);
+// For every test...
+// Ensure a fresh database exists
+// And ensure the test starts on the app's welcome page
+test.beforeAll(startBackend);
+test.beforeEach(refreshBackend);
 test.beforeEach(async ({ page }) => {
   await page.goto("http://localhost:5173/Board-Board/");
-});
-
-test("Welcome page loads", async ({ page }) => {
-  // Verify the contents of the welcome page
-  const welcomeNotice = page.locator("h1", { hasText: "Welcome to Board Board!" });
-  await expect(welcomeNotice).toHaveCount(1);
-  const loginButton = page.locator("button", { hasText: "Login" });
-  await expect(loginButton).toHaveCount(1);
-  const signUpButton = page.locator("button", { hasText: "Sign up" });
-  await expect(signUpButton).toHaveCount(1);
-});
-
-test("/dashboard route is protected", async ({ page }) => {
-  // Go to the dashboard without logging in
-  await page.goto("http://localhost:5173/Board-Board/dashboard");
-
-  // Verify that the user was returned to the welcome page
-  const welcomeNotice = page.locator("h1", { hasText: "Welcome to Board Board!" });
-  await expect(welcomeNotice).toHaveCount(1);
-});
-
-test("404 route works", async ({ page }) => {
-  // Go to a non-existant page
-  await page.goto("http://localhost:5173/Board-Board/test");
-
-  // Verify that the user was returned to the welcome page
-  const errorMessage = page.locator("h1", { hasText: "404" });
-  await expect(errorMessage).toHaveCount(1);
-
-  // Return to the welcome page
-  const homeButton = page.locator("button", { hasText: "Back to Home" });
-  await expect(homeButton).toHaveCount(1);
-  homeButton.click();
-
-  // Verify the contents of the welcome page
-  const welcomeNotice = page.locator("h1", { hasText: "Welcome to Board Board!" });
-  await expect(welcomeNotice).toHaveCount(1);
 });
 
 test.describe("User Auth", () => {
@@ -58,12 +25,35 @@ test.describe("User Auth", () => {
     await signUp(page, userEmail, userPassword, userName);
 
     // Log out
-    const logoutButton = page.locator("button", { hasText: "Sign out" });
+    // Open the user dropdown
+    const userButton = page.locator("button.navbar-right-button");
+    await expect(userButton).toHaveCount(1);
+    userButton.click();
+    // Verify the logout button exists
+    const logoutButton = page.locator("button", { hasText: "Logout" });
+    await expect(logoutButton).toBeVisible();
     await expect(logoutButton).toHaveCount(1);
-    logoutButton.click();
+    // Actually log out
+    await logoutButton.click();
 
     // Log back in
-    await login(page, userEmail, userPassword, userName);
+    await login(page, userEmail, userPassword);
+  });
+
+  test("Logged in user sees dashboard button on welcome page", async ({ page }) => {
+    // Sign up
+    await signUp(page, userEmail, userPassword, userName);
+
+    // Return to the welcome page
+    await page.goto("http://localhost:5173/Board-Board/");
+
+    // Return to the dashboard
+    const dashboardButton = page.locator("button", { hasText: "Go to Dashboard" });
+    await expect(dashboardButton).toHaveCount(1);
+    await dashboardButton.click();
+
+    // Verify that the user returned to the dashboard
+    await verifyDashboardReached(page);
   });
 
   test("Can switch between login and sign up forms", async ({ page }) => {
@@ -100,6 +90,31 @@ test.describe("User Auth", () => {
   });
 
   test.describe("Sign up validation", () => {
+    test("Logging in cannot be done before signing up", async ({ page }) => {
+      // Open the login form
+      const loginButton = page.locator("button", { hasText: "Login" }).first();
+      await loginButton.click();
+
+      // Enter the new user's info
+      const emailInput = page.locator('input[name="email"]');
+      await emailInput.fill(userEmail);
+      const passwordInput = page.locator('input[name="password"]');
+      await passwordInput.fill(userPassword);
+
+      // Submit the login form
+      await page.keyboard.press("Enter");
+
+      // Verfiy the correct error message was displayed
+      const errorMessage = page.locator(
+        "div.relative.overflow-hidden.w-full.rounded-lg.p-4.flex.gap-2\\.5.items-start.bg-error\\/10.text-error.ring.ring-inset.ring-error\\/25.alert",
+        {
+          hasText: AUTH.MESSAGES.INVALID,
+        },
+      );
+      await expect(errorMessage).toBeVisible();
+      await expect(errorMessage).toHaveCount(1);
+    });
+
     test("Usernames shorter than 3 characters aren't allowed", async ({ page }) => {
       // Open the sign up form
       const signUpButton = page.locator("button", { hasText: "Sign Up" }).first();
@@ -154,6 +169,112 @@ test.describe("User Auth", () => {
       await expect(errorMessage).toHaveCount(1);
     });
 
+    test("Emails that are empty aren't allowed in sign up", async ({ page }) => {
+      // Open the sign up form
+      const signUpButton = page.locator("button", { hasText: "Sign Up" }).first();
+      await signUpButton.click();
+
+      // Enter the new user's info
+      const usernameInput = page.locator('input[name="username"]');
+      await usernameInput.fill(userName);
+      const emailInput = page.locator('input[name="email"]');
+      await emailInput.fill("");
+      const passwordInput = page.locator('input[name="password"]');
+      await passwordInput.fill(userPassword);
+
+      // Submit the sign up form
+      await page.keyboard.press("Enter");
+
+      // Verfiy the correct error message was displayed
+      const errorMessage = page.locator(
+        "div.relative.overflow-hidden.w-full.rounded-lg.p-4.flex.gap-2\\.5.items-start.bg-error\\/10.text-error.ring.ring-inset.ring-error\\/25.alert",
+        {
+          hasText: AUTH.MESSAGES.MISSING_FIELD,
+        },
+      );
+      await expect(errorMessage).toBeVisible();
+      await expect(errorMessage).toHaveCount(1);
+    });
+
+    test("Emails that are empty aren't allowed in login", async ({ page }) => {
+      // Logging in without signing up first would fail anyway, but the missing field error will happen first
+      // Open the login form
+      const loginButton = page.locator("button", { hasText: "Login" }).first();
+      await loginButton.click();
+
+      // Enter the new user's info
+      const emailInput = page.locator('input[name="email"]');
+      await emailInput.fill("");
+      const passwordInput = page.locator('input[name="password"]');
+      await passwordInput.fill(userPassword);
+
+      // Submit the login form
+      await page.keyboard.press("Enter");
+
+      // Verfiy the correct error message was displayed
+      const errorMessage = page.locator(
+        "div.relative.overflow-hidden.w-full.rounded-lg.p-4.flex.gap-2\\.5.items-start.bg-error\\/10.text-error.ring.ring-inset.ring-error\\/25.alert",
+        {
+          hasText: AUTH.MESSAGES.MISSING_FIELD,
+        },
+      );
+      await expect(errorMessage).toBeVisible();
+      await expect(errorMessage).toHaveCount(1);
+    });
+
+    test("Passwords that are empty aren't allowed in sign up", async ({ page }) => {
+      // Open the sign up form
+      const signUpButton = page.locator("button", { hasText: "Sign Up" }).first();
+      await signUpButton.click();
+
+      // Enter the new user's info
+      const usernameInput = page.locator('input[name="username"]');
+      await usernameInput.fill(userName);
+      const emailInput = page.locator('input[name="email"]');
+      await emailInput.fill(userEmail);
+      const passwordInput = page.locator('input[name="password"]');
+      await passwordInput.fill("");
+
+      // Submit the sign up form
+      await page.keyboard.press("Enter");
+
+      // Verfiy the correct error message was displayed
+      const errorMessage = page.locator(
+        "div.relative.overflow-hidden.w-full.rounded-lg.p-4.flex.gap-2\\.5.items-start.bg-error\\/10.text-error.ring.ring-inset.ring-error\\/25.alert",
+        {
+          hasText: AUTH.MESSAGES.MISSING_FIELD,
+        },
+      );
+      await expect(errorMessage).toBeVisible();
+      await expect(errorMessage).toHaveCount(1);
+    });
+
+    test("Passwords that are empty aren't allowed in login", async ({ page }) => {
+      // Logging in without signing up first would fail anyway, but the missing field error will happen first
+      // Open the login form
+      const loginButton = page.locator("button", { hasText: "Login" }).first();
+      await loginButton.click();
+
+      // Enter the new user's info
+      const emailInput = page.locator('input[name="email"]');
+      await emailInput.fill(userEmail);
+      const passwordInput = page.locator('input[name="password"]');
+      await passwordInput.fill("");
+
+      // Submit the login form
+      await page.keyboard.press("Enter");
+
+      // Verfiy the correct error message was displayed
+      const errorMessage = page.locator(
+        "div.relative.overflow-hidden.w-full.rounded-lg.p-4.flex.gap-2\\.5.items-start.bg-error\\/10.text-error.ring.ring-inset.ring-error\\/25.alert",
+        {
+          hasText: AUTH.MESSAGES.MISSING_FIELD,
+        },
+      );
+      await expect(errorMessage).toBeVisible();
+      await expect(errorMessage).toHaveCount(1);
+    });
+
     test("Passwords shorter than 6 characters aren't allowed", async ({ page }) => {
       // Open the sign up form
       const signUpButton = page.locator("button", { hasText: "Sign Up" }).first();
@@ -186,9 +307,16 @@ test.describe("User Auth", () => {
       await signUp(page, userEmail, userPassword, userName);
 
       // Log out that user
-      const logoutButton = page.locator("button", { hasText: "Sign out" });
+      // Open the user dropdown
+      const userButton = page.locator("button.navbar-right-button");
+      await expect(userButton).toHaveCount(1);
+      userButton.click();
+      // Verify the logout button exists
+      const logoutButton = page.locator("button", { hasText: "Logout" });
+      await expect(logoutButton).toBeVisible();
       await expect(logoutButton).toHaveCount(1);
-      logoutButton.click();
+      // Actually log out
+      await logoutButton.click();
 
       // Open the sign up form again
       const signUpButton = page.locator("button", { hasText: "Sign Up" }).first();

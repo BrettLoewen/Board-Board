@@ -1,21 +1,58 @@
-import { execSync, spawnSync } from "child_process";
+import { execSync, spawnSync, spawn } from "child_process";
 import detect from "detect-port";
 import { Page, expect } from "@playwright/test";
 
-export async function setupE2eTest() {
+// Ensure the backend is setup before any tests are run
+export async function startBackend() {
   await startSupabase();
   reseedDb();
 }
 
-async function startSupabase() {
-  const port = await detect(54321);
-  if (port !== 54321) {
-    return;
-  }
-  console.warn("Supabase not detected - Starting it now");
-  execSync("supabase start");
+// Ensure a fresh database exists for each test
+export async function refreshBackend() {
+  reseedDb();
 }
 
+// Ensure the database exists
+async function startSupabase() {
+  // Detect if supabase is running or not
+  const port = await detect(54321);
+  // If supabase is not running, start it
+  if (port === 54321) {
+    console.warn("Supabase not detected. Starting it now");
+    execSync("supabase start");
+  }
+
+  // Check if the delete-user edge function is running
+  const functionUrl = "http://127.0.0.1:54321/functions/v1/delete-user";
+  const reachable = await isFunctionAvailable(functionUrl);
+
+  // If it is not running, serve it
+  if (!reachable) {
+    console.log("Starting Supabase Edge function: delete-user");
+    spawn("supabase", ["functions", "serve", "delete-user"], {
+      stdio: "inherit",
+      shell: true,
+    });
+  }
+
+  return;
+}
+
+async function isFunctionAvailable(url) {
+  try {
+    // Try to hit the given url for an edge function.
+    // If the fetch doesn't fail, then the function is running.
+    await fetch(url, { method: "HEAD" });
+    return true;
+  } catch {
+    // If the fetch fails, then the function is not running.
+    return false;
+  }
+  return false;
+}
+
+// Clear all the data so all tests are running in a known environment
 function reseedDb() {
   spawnSync(
     "psql",
@@ -48,15 +85,11 @@ export async function signUp(
   // Submit the sign up form
   await page.keyboard.press("Enter");
 
-  // Verify the dashboard page was reached.
-  // Will need to be changed later after dashboard is updated.
-  const welcomeNotice = page.locator("p", { hasText: `Welcome, ${userName}!` });
-  await expect(welcomeNotice).toHaveCount(1);
-  const logoutButton = page.locator("button", { hasText: "Sign out" });
-  await expect(logoutButton).toHaveCount(1);
+  // Verify the dashboard page was reached and the user is logged in.
+  await verifyDashboardReached(page, userName);
 }
 
-export async function login(page: Page, userEmail: string, userPassword: string, userName: string) {
+export async function login(page: Page, userEmail: string, userPassword: string) {
   // Open the login form
   const loginButton = page.locator("button", { hasText: "Login" }).first();
   await loginButton.click();
@@ -67,13 +100,65 @@ export async function login(page: Page, userEmail: string, userPassword: string,
   const passwordInput = page.locator('input[name="password"]');
   await passwordInput.fill(userPassword);
 
-  // Submit the sign up form
+  // Submit the login form
   await page.keyboard.press("Enter");
 
+  // Verify the dashboard page was reached and the user is logged in.
+  await verifyDashboardReached(page);
+}
+
+export async function verifyDashboardReached(page: Page, username: string | undefined) {
   // Verify the dashboard page was reached.
-  // Will need to be changed later after dashboard is updated.
-  const welcomeNotice = page.locator("p", { hasText: `Welcome, ${userName}!` });
-  await expect(welcomeNotice).toHaveCount(1);
-  const logoutButton = page.locator("button", { hasText: "Sign out" });
+  const welcomePageLink = page.locator("a", { hasText: "Board Board" });
+  await expect(welcomePageLink).toHaveCount(1);
+
+  // Open the user dropdown
+  const userButton = page.locator("button.navbar-right-button");
+  await expect(userButton).toHaveCount(1);
+  await userButton.click();
+
+  // If a username was passed, check to see that is displayed in the user dropdown
+  if (username) {
+    const usernameDisplay = page.getByText(username);
+    await expect(usernameDisplay).toBeVisible();
+    await expect(usernameDisplay).toHaveCount(1);
+  }
+
+  // Verify the logout button exists
+  const logoutButton = page.locator("button", { hasText: "Logout" });
+  await expect(logoutButton).toBeVisible();
   await expect(logoutButton).toHaveCount(1);
+
+  // Close the user dropdown so further testing doesn't break
+  await page.keyboard.press("Escape");
+}
+
+export async function signUpToSettingsPage(
+  page: Page,
+  userEmail: string,
+  userPassword: string,
+  userName: string,
+) {
+  // Sign up
+  await signUp(page, userEmail, userPassword, userName);
+
+  // Open the user dropdown, click the settings button, and verify the settings page was reached
+  await navigateToSettingsPageFromDashboard(page);
+}
+
+export async function navigateToSettingsPageFromDashboard(page: Page) {
+  // Open the user dropdown
+  const userButton = page.locator("button.navbar-right-button");
+  await expect(userButton).toHaveCount(1);
+  await userButton.click();
+
+  // Verify the settings button exists and click it
+  const settingsButton = page.locator("a", { hasText: "Settings" });
+  await expect(settingsButton).toBeVisible();
+  await expect(settingsButton).toHaveCount(1);
+  await settingsButton.click();
+
+  // Verify that the settings page was reached
+  const settingsPageHeader = page.locator("h1", { hasText: "Settings" });
+  await expect(settingsPageHeader).toHaveCount(1);
 }
