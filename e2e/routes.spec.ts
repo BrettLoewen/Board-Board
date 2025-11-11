@@ -29,11 +29,29 @@ test.describe("Unauthenticated Routes", () => {
     await expect(welcomeNotice).toHaveCount(1);
   });
 
+  test("/email route works", async ({ page }) => {
+    // Go to a non-existant page
+    await page.goto("http://localhost:5173/Board-Board/email");
+
+    // Verify that the user got to the email confirmation page
+    const header = page.locator("h1", { hasText: "An Email has been sent to your Inbox" });
+    await expect(header).toHaveCount(1);
+
+    // Return to the welcome page
+    const homeButton = page.locator("button", { hasText: "Back to Home" });
+    await expect(homeButton).toHaveCount(1);
+    homeButton.click();
+
+    // Verify the contents of the welcome page
+    const welcomeNotice = page.locator("h1", { hasText: "Welcome to Board Board!" });
+    await expect(welcomeNotice).toHaveCount(1);
+  });
+
   test("404 route works", async ({ page }) => {
     // Go to a non-existant page
     await page.goto("http://localhost:5173/Board-Board/test");
 
-    // Verify that the user was returned to the welcome page
+    // Verify that the user was redirected to the 404 page
     const errorMessage = page.locator("h1", { hasText: "404" });
     await expect(errorMessage).toHaveCount(1);
 
