@@ -42,6 +42,7 @@ export const useAuthStore = defineStore("auth", () => {
       }
       // If a user was signed in, get their profile data
       else {
+        console.log("sign in");
         fetchProfile().catch(console.error);
       }
     });
@@ -94,6 +95,9 @@ export const useAuthStore = defineStore("auth", () => {
       },
     });
     if (error) throw error;
+
+    // Fetch the user's profile after sign up
+    await fetchProfile();
 
     // Return the data result so it can be used after sign up
     return data;

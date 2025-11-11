@@ -65,13 +65,13 @@ const data = ref([
     openedAt: "2025-10-11T15:30:00",
   },
   {
-    name: "Test Board",
-    ownedBy: "Testy",
+    name: "First Board",
+    ownedBy: "Alfred",
     openedAt: "2025-10-21T15:30:00",
   },
   {
     name: "Alpha",
-    ownedBy: "Testy",
+    ownedBy: "Alfred",
     openedAt: "2025-10-31T15:30:00",
   },
 ]);

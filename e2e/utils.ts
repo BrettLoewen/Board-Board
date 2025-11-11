@@ -52,7 +52,7 @@ export async function signUp(
   await page.keyboard.press("Enter");
 
   // Verify the dashboard page was reached and the user is logged in.
-  await verifyDashboardReached(page);
+  await verifyDashboardReached(page, userName);
 }
 
 export async function login(page: Page, userEmail: string, userPassword: string) {
@@ -73,7 +73,7 @@ export async function login(page: Page, userEmail: string, userPassword: string)
   await verifyDashboardReached(page);
 }
 
-export async function verifyDashboardReached(page: Page) {
+export async function verifyDashboardReached(page: Page, username: string | undefined) {
   // Verify the dashboard page was reached.
   const welcomePageLink = page.locator("a", { hasText: "Board Board" });
   await expect(welcomePageLink).toHaveCount(1);
@@ -81,7 +81,14 @@ export async function verifyDashboardReached(page: Page) {
   // Open the user dropdown
   const userButton = page.locator("button.navbar-right-button");
   await expect(userButton).toHaveCount(1);
-  userButton.click();
+  await userButton.click();
+
+  // If a username was passed, check to see that is displayed in the user dropdown
+  if (username) {
+    const usernameDisplay = page.getByText(username);
+    await expect(usernameDisplay).toBeVisible();
+    await expect(usernameDisplay).toHaveCount(1);
+  }
 
   // Verify the logout button exists
   const logoutButton = page.locator("button", { hasText: "Logout" });
@@ -105,7 +112,7 @@ export async function signUpToSettingsPage(
   await navigateToSettingsPageFromDashboard(page);
 }
 
-export async function navigateToSettingsPageFromDashboard(page) {
+export async function navigateToSettingsPageFromDashboard(page: Page) {
   // Open the user dropdown
   const userButton = page.locator("button.navbar-right-button");
   await expect(userButton).toHaveCount(1);
