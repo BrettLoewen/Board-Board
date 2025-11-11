@@ -1,21 +1,55 @@
-import { execSync, spawnSync } from "child_process";
+import { execSync, spawnSync, spawn } from "child_process";
 import detect from "detect-port";
 import { Page, expect } from "@playwright/test";
 
-// Ensure a fresh database exists
-export async function setupE2eTest() {
+// Ensure the backend is setup before any tests are run
+export async function startBackend() {
   await startSupabase();
+  reseedDb();
+}
+
+// Ensure a fresh database exists for each test
+export async function refreshBackend() {
   reseedDb();
 }
 
 // Ensure the database exists
 async function startSupabase() {
+  // Detect if supabase is running or not
   const port = await detect(54321);
-  if (port !== 54321) {
-    return;
+  // If supabase is not running, start it
+  if (port === 54321) {
+    console.warn("Supabase not detected. Starting it now");
+    execSync("supabase start");
   }
-  console.warn("Supabase not detected - Starting it now");
-  execSync("supabase start");
+
+  // Check if the delete-user edge function is running
+  const functionUrl = "http://127.0.0.1:54321/functions/v1/delete-user";
+  const reachable = await isFunctionAvailable(functionUrl);
+
+  // If it is not running, serve it
+  if (!reachable) {
+    console.log("Starting Supabase Edge function: delete-user");
+    spawn("supabase", ["functions", "serve", "delete-user"], {
+      stdio: "inherit",
+      shell: true,
+    });
+  }
+
+  return;
+}
+
+async function isFunctionAvailable(url) {
+  try {
+    // Try to hit the given url for an edge function.
+    // If the fetch doesn't fail, then the function is running.
+    await fetch(url, { method: "HEAD" });
+    return true;
+  } catch {
+    // If the fetch fails, then the function is not running.
+    return false;
+  }
+  return false;
 }
 
 // Clear all the data so all tests are running in a known environment

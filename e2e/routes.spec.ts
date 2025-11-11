@@ -1,10 +1,11 @@
 import { test, expect } from "@playwright/test";
-import { setupE2eTest, signUp, verifyDashboardReached } from "./utils";
+import { startBackend, refreshBackend, signUp, verifyDashboardReached } from "./utils";
 
 // For every test...
 // Ensure a fresh database exists
 // And ensure the test starts on the app's welcome page
-test.beforeEach(setupE2eTest);
+test.beforeAll(startBackend);
+test.beforeEach(refreshBackend);
 test.beforeEach(async ({ page }) => {
   await page.goto("http://localhost:5173/Board-Board/");
 });
