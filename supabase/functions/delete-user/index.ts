@@ -14,7 +14,10 @@ Deno.serve(async (req) => {
   const authHeader = req.headers.get("Authorization");
 
   if (!authHeader) {
-    return new Response(JSON.stringify({ error: "Missing access token" }), { status: 401 });
+    return new Response(JSON.stringify({ error: "Missing access token" }), {
+      status: 401,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   }
 
   const supabaseClient = createClient(supabaseUrl, anonKey, {
@@ -28,14 +31,20 @@ Deno.serve(async (req) => {
   if (userError || !user) {
     return new Response(
       JSON.stringify({ error: `Unauthorized. userError: ${userError}. user: ${user}` }),
-      { status: 401 },
+      { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   }
 
   const { error: deleteError } = await supabaseAdmin.auth.admin.deleteUser(user.id);
   if (deleteError) {
-    return new Response(JSON.stringify({ error: deleteError.message }), { status: 400 });
+    return new Response(JSON.stringify({ error: deleteError.message }), {
+      status: 400,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   }
 
-  return new Response(JSON.stringify({ success: true }), { status: 200 });
+  return new Response(JSON.stringify({ success: true }), {
+    status: 200,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
 });
