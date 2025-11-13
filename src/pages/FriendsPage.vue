@@ -4,6 +4,7 @@ import { useClipboard } from "@vueuse/core";
 import { ROUTES } from "@/constants";
 import router from "@/router";
 import { useAuthStore } from "@/stores/auth";
+import { supabase } from "@/lib/supabaseClient";
 
 const auth = useAuthStore();
 const { copy, copied } = useClipboard();
@@ -19,8 +20,15 @@ function toDashboardPage(): void {
   router.push(ROUTES.DASHBOARD);
 }
 
-function cycleFriendCode(): void {
-  console.log("Refreshing code");
+async function cycleFriendCode(close: () => void): Promise<void> {
+  // Close the modal
+  close();
+
+  // Tell the database to generate a new friend code
+  await supabase.rpc("refresh_friend_code", { user_id: auth.user?.id ?? "" });
+
+  // Fetch and store the updated user data
+  await auth.fetchProfile();
 }
 
 function sendFriendCode(): void {
@@ -55,7 +63,33 @@ function sendFriendCode(): void {
           </UTooltip>
         </template>
       </UInput>
-      <UButton class="select-button" @click="cycleFriendCode">Get New Code</UButton>
+      <UModal
+        title="Get a new friend code?"
+        description="This will update the code that other users can send friend requests to. Are you sure you want to update your code?"
+        :close="{ class: 'friend-code-modal-close-button' }"
+      >
+        <UButton class="select-button">Get New Code</UButton>
+
+        <template #body="{ close }">
+          <div class="list">
+            <ol class="normal">
+              <li>Your friends and shared boards will persist.</li>
+              <li>Previously sent friend requests for the old code will persist.</li>
+              <li>New friend requests to the old code will fail.</li>
+            </ol>
+          </div>
+          <div class="friend-code-modal-buttons">
+            <UButton label="Get New Code" class="select-button" @click="cycleFriendCode(close)" />
+            <UButton
+              color="neutral"
+              variant="outline"
+              label="Cancel"
+              class="friend-code-modal-cancel-button"
+              @click="close"
+            />
+          </div>
+        </template>
+      </UModal>
     </div>
 
     <USeparator class="separator" color="neutral" label="Send Request" />
@@ -128,5 +162,35 @@ function sendFriendCode(): void {
 }
 .select-button:hover {
   cursor: pointer;
+}
+
+.friend-code-modal-buttons {
+  display: flex;
+  flex-direction: row;
+  justify-content: center;
+  gap: 10px;
+}
+
+.friend-code-modal-close-button:active {
+  background-color: var(--color-neutral-800);
+}
+.friend-code-modal-close-button:hover {
+  cursor: pointer;
+}
+
+.friend-code-modal-cancel-button:active {
+  background-color: var(--color-neutral-800);
+}
+.friend-code-modal-cancel-button:hover {
+  cursor: pointer;
+}
+
+.list {
+  padding-bottom: 24px;
+}
+
+ol.normal {
+  padding-left: 20px;
+  list-style-type: disc;
 }
 </style>

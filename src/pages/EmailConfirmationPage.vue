@@ -16,8 +16,8 @@ function toWelcomePage() {
   </div>
 </template>
 
-<style>
-.center {
+<style scoped>
+:deep(.center) {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -28,19 +28,19 @@ function toWelcomePage() {
   padding-left: 20%;
   padding-right: 20%;
 }
-.center h1 {
+:deep(.center h1) {
   font-size: 32pt;
   margin-bottom: 20px;
 }
-.center p {
+:deep(.center p) {
   font-size: 14pt;
   margin-bottom: 20px;
 }
 
-.home-button:active {
+:deep(.home-button:active) {
   background-color: var(--color-primary-800);
 }
-.home-button:hover {
+:deep(.home-button:hover) {
   cursor: pointer;
 }
 </style>
