@@ -1,11 +1,16 @@
 <script setup lang="ts">
-import { ref } from "vue";
+import { computed, ref } from "vue";
+import { useClipboard } from "@vueuse/core";
 import { ROUTES } from "@/constants";
 import router from "@/router";
 import { useAuthStore } from "@/stores/auth";
 
 const auth = useAuthStore();
+const { copy, copied } = useClipboard();
 
+const friendCode = computed<string | undefined>(() => {
+  return auth.profile?.friend_code;
+});
 const requestId = ref<string>("");
 const friends = ref<string[]>(["Billy", "Steve", "Bob"]);
 
@@ -35,7 +40,21 @@ function sendFriendCode(): void {
 
     <USeparator class="separator" color="neutral" label="Your Friend Code" />
     <div class="horizontal-layout">
-      <UInput disabled :placeholder="auth.profile?.usename" />
+      <UInput disabled :value="friendCode ?? ''">
+        <template #trailing>
+          <UTooltip text="Copy to clipboard">
+            <UButton
+              class="clipboard-button"
+              :color="copied ? 'success' : 'neutral'"
+              variant="link"
+              size="sm"
+              :icon="copied ? 'i-lucide-copy-check' : 'i-lucide-copy'"
+              aria-label="Copy to clipboard"
+              @click="copy(friendCode ?? '')"
+            />
+          </UTooltip>
+        </template>
+      </UInput>
       <UButton class="select-button" @click="cycleFriendCode">Get New Code</UButton>
     </div>
 
@@ -93,6 +112,10 @@ function sendFriendCode(): void {
   flex-direction: row;
   align-items: flex-start;
   gap: 15px;
+}
+
+.clipboard-button:hover {
+  cursor: pointer;
 }
 
 .select-button {
