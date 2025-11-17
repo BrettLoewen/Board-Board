@@ -31,8 +31,18 @@ async function cycleFriendCode(close: () => void): Promise<void> {
   await auth.fetchProfile();
 }
 
-function sendFriendCode(): void {
+async function sendFriendCode(): Promise<void> {
   console.log("Sending code " + requestId.value);
+
+  // Tell the database to send a friend request to the given friend code
+  const { error } = await supabase.rpc("send_friend_request", {
+    from_user: auth.user?.id ?? "",
+    to_friend_code: requestId.value ?? "",
+  });
+
+  if (error) {
+    console.log(error);
+  }
 }
 </script>
 
@@ -92,7 +102,7 @@ function sendFriendCode(): void {
       </UModal>
     </div>
 
-    <USeparator class="separator" color="neutral" label="Send Request" />
+    <USeparator class="separator" color="neutral" label="Friend Requests" />
     <div class="horizontal-layout">
       <UInput v-model="requestId" placeholder="Friend's code" />
       <UButton class="select-button" @click="sendFriendCode">Send Request</UButton>
