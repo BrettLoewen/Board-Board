@@ -6,6 +6,7 @@ import router from "@/router";
 import { useAuthStore } from "@/stores/auth";
 import { supabase } from "@/lib/supabaseClient";
 import { useRealtimeStore } from "@/stores/realtime";
+import type { Json } from "@/types/database.types";
 
 const auth = useAuthStore();
 const realtime = useRealtimeStore();
@@ -36,7 +37,8 @@ async function cycleFriendCode(close: () => void): Promise<void> {
 async function sendFriendCode(): Promise<void> {
   console.log("Sending code " + requestId.value);
 
-  // Tell the database to send a friend request to the given friend code
+  // Tell the database to send a friend request to the given friend code.
+  // If successful, will get back the user id that the friend request was sent to.
   const { data, error } = await supabase.rpc("send_friend_request", {
     from_user: auth.user?.id ?? "",
     to_friend_code: requestId.value ?? "",
@@ -46,6 +48,8 @@ async function sendFriendCode(): Promise<void> {
     console.log(error);
   }
 
+  // If the friend request creation in the database was successful and a user id for that user was received,
+  // send a broadcast message to that user to inform them of the friend request.
   if (data) {
     console.log(data);
     const topic = REALTIME.TOPICS.USER + data;
@@ -54,12 +58,14 @@ async function sendFriendCode(): Promise<void> {
   }
 }
 
-function handleFriendRequest(payload: undefined) {
+function handleFriendRequest(payload: Json) {
   console.log("friend request received", payload);
 }
 
 onMounted(() => {
   if (!auth.user) return;
+
+  // If a friend request is received, handle the message in handleFriendRequest
   realtime.on(
     `${REALTIME.TOPICS.USER}${auth.user.id}`,
     REALTIME.EVENTS.FRIEND_REQUEST,
@@ -69,6 +75,8 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   if (!auth.user) return;
+
+  // Clean up the subscription to friend requests
   realtime.off(
     `${REALTIME.TOPICS.USER}${auth.user.id}`,
     REALTIME.EVENTS.FRIEND_REQUEST,
