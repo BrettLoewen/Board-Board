@@ -1,12 +1,14 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { useClipboard } from "@vueuse/core";
-import { ROUTES } from "@/constants";
+import { REALTIME, ROUTES } from "@/constants";
 import router from "@/router";
 import { useAuthStore } from "@/stores/auth";
 import { supabase } from "@/lib/supabaseClient";
+import { useRealtimeStore } from "@/stores/realtime";
 
 const auth = useAuthStore();
+const realtime = useRealtimeStore();
 const { copy, copied } = useClipboard();
 
 const friendCode = computed<string | undefined>(() => {
@@ -35,7 +37,7 @@ async function sendFriendCode(): Promise<void> {
   console.log("Sending code " + requestId.value);
 
   // Tell the database to send a friend request to the given friend code
-  const { error } = await supabase.rpc("send_friend_request", {
+  const { data, error } = await supabase.rpc("send_friend_request", {
     from_user: auth.user?.id ?? "",
     to_friend_code: requestId.value ?? "",
   });
@@ -43,7 +45,36 @@ async function sendFriendCode(): Promise<void> {
   if (error) {
     console.log(error);
   }
+
+  if (data) {
+    console.log(data);
+    const topic = REALTIME.TOPICS.USER + data;
+    const event = REALTIME.EVENTS.FRIEND_REQUEST;
+    console.log(await realtime.sendToTopic(topic, event, {}));
+  }
 }
+
+function handleFriendRequest(payload: undefined) {
+  console.log("friend request received", payload);
+}
+
+onMounted(() => {
+  if (!auth.user) return;
+  realtime.on(
+    `${REALTIME.TOPICS.USER}${auth.user.id}`,
+    REALTIME.EVENTS.FRIEND_REQUEST,
+    handleFriendRequest,
+  );
+});
+
+onBeforeUnmount(() => {
+  if (!auth.user) return;
+  realtime.off(
+    `${REALTIME.TOPICS.USER}${auth.user.id}`,
+    REALTIME.EVENTS.FRIEND_REQUEST,
+    handleFriendRequest,
+  );
+});
 </script>
 
 <template>

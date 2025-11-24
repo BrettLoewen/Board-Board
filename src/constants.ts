@@ -37,3 +37,12 @@ export const ROUTES = {
   FRIENDS: "/dashboard/friends",
   SETTINGS: "/dashboard/settings",
 };
+
+export const REALTIME = {
+  TOPICS: {
+    USER: "user:",
+  },
+  EVENTS: {
+    FRIEND_REQUEST: "friend_request",
+  },
+};

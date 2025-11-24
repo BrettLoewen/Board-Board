@@ -60,7 +60,7 @@ execute procedure public.set_updated_at();
 -- Create a friend_request message from `from_user` to the user whose friend code matches `to_friend_code`.
 -- To be called as an RPC function.
 create or replace function public.send_friend_request(from_user uuid, to_friend_code text)
-returns boolean
+returns uuid
 language plpgsql
 security definer
 set search_path = ''
@@ -105,7 +105,7 @@ begin
   values (from_user, to_user, 'friend_request', request_body, 'sent');
 
   -- Return true to indicate the insert was performed successfully
-  return true;
+  return to_user;
 end;
 $$;
 
