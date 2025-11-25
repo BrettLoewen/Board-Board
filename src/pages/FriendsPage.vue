@@ -6,7 +6,6 @@ import router from "@/router";
 import { useAuthStore } from "@/stores/auth";
 import { supabase } from "@/lib/supabaseClient";
 import { useRealtimeStore } from "@/stores/realtime";
-import type { Json } from "@/types/database.types";
 
 const auth = useAuthStore();
 const realtime = useRealtimeStore();
@@ -17,6 +16,9 @@ const friendCode = computed<string | undefined>(() => {
 });
 const requestId = ref<string>("");
 const friends = ref<string[]>(["Billy", "Steve", "Bob"]);
+
+const friendRequests = ref<{ id: string; name: string }[]>([]);
+const friendRequestSenders = ref<string[]>([]);
 
 // Return the user to the dashboard page
 function toDashboardPage(): void {
@@ -32,6 +34,52 @@ async function cycleFriendCode(close: () => void): Promise<void> {
 
   // Fetch and store the updated user data
   await auth.fetchProfile();
+}
+
+async function getFriendRequests(): Promise<void> {
+  // Get the data for all friend request messages sent to the logged in user, along with the username of the users who sent the requests
+  const { data, error } = await supabase
+    .from("user_messages")
+    .select(
+      `
+      id,
+      from_user_id,
+      to_user_id,
+      message_status,
+      message_type,
+      sender:user_profiles!user_messages_from_user_id_fkey (
+        username
+      )
+    `,
+    )
+    .eq("message_type", "friend_request")
+    .eq("to_user_id", auth.profile?.id);
+
+  if (error) {
+    console.error(error);
+    return;
+  }
+
+  if (data) {
+    // Clear the stored data so just the up-to-date info is used/displayed
+    friendRequests.value = [];
+    friendRequestSenders.value = [];
+
+    // Loop through each row of the data
+    data.forEach((request) => {
+      // If it has not already been added (in case there are duplicated requests)
+      if (!friendRequestSenders.value.includes(request.from_user_id ?? "")) {
+        // Store the request's sender, so duplicate requests from the same user cannot be shown if they exist
+        friendRequestSenders.value.push(request.from_user_id ?? "");
+
+        // Store the data from the request that is needed by the UI
+        friendRequests.value.push({
+          id: request.id,
+          name: request.sender?.username ?? "",
+        });
+      }
+    });
+  }
 }
 
 async function sendFriendCode(): Promise<void> {
@@ -58,10 +106,6 @@ async function sendFriendCode(): Promise<void> {
   }
 }
 
-function handleFriendRequest(payload: Json) {
-  console.log("friend request received", payload);
-}
-
 onMounted(() => {
   if (!auth.user) return;
 
@@ -69,8 +113,10 @@ onMounted(() => {
   realtime.on(
     `${REALTIME.TOPICS.USER}${auth.user.id}`,
     REALTIME.EVENTS.FRIEND_REQUEST,
-    handleFriendRequest,
+    getFriendRequests,
   );
+
+  getFriendRequests();
 });
 
 onBeforeUnmount(() => {
@@ -80,7 +126,7 @@ onBeforeUnmount(() => {
   realtime.off(
     `${REALTIME.TOPICS.USER}${auth.user.id}`,
     REALTIME.EVENTS.FRIEND_REQUEST,
-    handleFriendRequest,
+    getFriendRequests,
   );
 });
 </script>
@@ -145,6 +191,11 @@ onBeforeUnmount(() => {
     <div class="horizontal-layout">
       <UInput v-model="requestId" placeholder="Friend's code" />
       <UButton class="select-button" @click="sendFriendCode">Send Request</UButton>
+    </div>
+    <div>
+      <div v-for="friendRequest in friendRequests" :key="friendRequest.id">
+        <p>{{ friendRequest.name }}</p>
+      </div>
     </div>
 
     <USeparator class="separator" color="neutral" label="Friends" />
