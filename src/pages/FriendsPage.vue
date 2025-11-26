@@ -106,6 +106,18 @@ async function sendFriendCode(): Promise<void> {
   }
 }
 
+async function acceptFriendRequest(requestId: string): Promise<void> {
+  console.log("Accept request from " + requestId);
+}
+
+async function rejectFriendRequest(requestId: string): Promise<void> {
+  console.log("Reject request from " + requestId);
+}
+
+async function removeFriend(friendId: string): Promise<void> {
+  console.log("Remove " + friendId);
+}
+
 onMounted(() => {
   if (!auth.user) return;
 
@@ -141,7 +153,7 @@ onBeforeUnmount(() => {
   <div class="center">
     <h1>Friends</h1>
 
-    <USeparator class="separator" color="neutral" label="Your Friend Code" />
+    <USeparator class="separator" color="neutral" size="sm" label="Your Friend Code" />
     <div class="horizontal-layout">
       <UInput disabled :value="friendCode ?? ''">
         <template #trailing>
@@ -187,21 +199,60 @@ onBeforeUnmount(() => {
       </UModal>
     </div>
 
-    <USeparator class="separator" color="neutral" label="Friend Requests" />
+    <USeparator class="separator" color="neutral" size="sm" label="Friend Requests" />
     <div class="horizontal-layout">
       <UInput v-model="requestId" placeholder="Friend's code" />
       <UButton class="select-button" @click="sendFriendCode">Send Request</UButton>
     </div>
-    <div>
-      <div v-for="friendRequest in friendRequests" :key="friendRequest.id">
-        <p>{{ friendRequest.name }}</p>
+    <div class="margin-top-15 rounded-md border-0 p-2.5 ring ring-inset ring-accented">
+      <div v-if="friendRequests && friendRequests.length > 0" class="friends-container">
+        <p class="text-sm">Pending Friend Requests</p>
+        <div
+          class="friend-request rounded-md border-0 ring ring-inset ring-accented"
+          v-for="friendRequest in friendRequests"
+          :key="friendRequest.id"
+        >
+          <p class="content-center">{{ friendRequest.name }}</p>
+          <div class="flex gap-2.5">
+            <UButton
+              variant="subtle"
+              icon="i-carbon-checkmark-outline"
+              @click="acceptFriendRequest(friendRequest.id)"
+            >
+              Accept
+            </UButton>
+            <UButton
+              variant="subtle"
+              icon="i-carbon-close-outline"
+              color="error"
+              @click="rejectFriendRequest(friendRequest.id)"
+            >
+              Reject
+            </UButton>
+          </div>
+        </div>
+      </div>
+      <div v-else>
+        <p class="text-sm text-center text-muted">No Pending Friend Requests</p>
       </div>
     </div>
 
-    <USeparator class="separator" color="neutral" label="Friends" />
-    <div>
-      <div v-for="friend in friends" :key="friend">
-        <p>{{ friend }}</p>
+    <USeparator class="separator" color="neutral" size="sm" label="Friends" />
+    <div class="flex flex-col gap-2.5">
+      <div
+        v-for="friend in friends"
+        :key="friend"
+        class="friend-request rounded-md border-0 ring ring-inset ring-accented"
+      >
+        <p class="content-center">{{ friend }}</p>
+        <UButton
+          variant="subtle"
+          icon="i-carbon-close-outline"
+          color="error"
+          @click="removeFriend(friend)"
+        >
+          Remove
+        </UButton>
       </div>
     </div>
   </div>
@@ -292,5 +343,22 @@ onBeforeUnmount(() => {
 ol.normal {
   padding-left: 20px;
   list-style-type: disc;
+}
+
+.margin-top-15 {
+  margin-top: 15px;
+}
+
+.friends-container {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.friend-request {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  padding: 10px;
 }
 </style>
