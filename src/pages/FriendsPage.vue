@@ -15,8 +15,7 @@ const friendCode = computed<string | undefined>(() => {
   return auth.profile?.friend_code;
 });
 const requestId = ref<string>("");
-const friends = ref<string[]>(["Billy", "Steve", "Bob"]);
-
+const friends = ref<{ id: string; name: string }[]>([]);
 const friendRequests = ref<{ id: string; name: string }[]>([]);
 const friendRequestSenders = ref<string[]>([]);
 
@@ -82,7 +81,7 @@ async function getFriendRequests(): Promise<void> {
   }
 }
 
-async function sendFriendCode(): Promise<void> {
+async function sendFriendRequest(): Promise<void> {
   console.log("Sending code " + requestId.value);
 
   // Tell the database to send a friend request to the given friend code.
@@ -94,51 +93,188 @@ async function sendFriendCode(): Promise<void> {
 
   if (error) {
     console.log(error);
+    return;
   }
 
   // If the friend request creation in the database was successful and a user id for that user was received,
   // send a broadcast message to that user to inform them of the friend request.
+  console.log(data);
   if (data) {
-    console.log(data);
     const topic = REALTIME.TOPICS.USER + data;
     const event = REALTIME.EVENTS.FRIEND_REQUEST;
     console.log(await realtime.sendToTopic(topic, event, {}));
+  } else {
+    console.log("Friend request created previously, updating timestamp");
   }
 }
 
 async function acceptFriendRequest(requestId: string): Promise<void> {
   console.log("Accept request from " + requestId);
+
+  //
+  const { data, error } = await supabase.rpc("accept_friend_request", {
+    friend_request_id: requestId,
+  });
+
+  if (error) {
+    console.log(error);
+  }
+
+  //
+  if (data) {
+    console.log(data);
+    // Update the friends page UI
+    getFriendRequests();
+    getFriends();
+
+    // Inform the friend request's sender that the request was accepted
+    const topic = REALTIME.TOPICS.USER + data;
+    const event = REALTIME.EVENTS.FRIEND_ACCEPTED;
+    console.log(await realtime.sendToTopic(topic, event, {}));
+  }
 }
 
 async function rejectFriendRequest(requestId: string): Promise<void> {
   console.log("Reject request from " + requestId);
+
+  //
+  const { error } = await supabase.rpc("delete_friend_request", {
+    friend_request_id: requestId,
+  });
+
+  if (error) {
+    console.log(error);
+  }
+
+  getFriendRequests();
+}
+
+async function getFriends(): Promise<void> {
+  // Get the friendship relationships that this user has with other users.
+  // Will be converted to user_profile rows later.
+  const { data, error } = await supabase
+    .from("friends")
+    .select()
+    .or(`user_id_1.eq.${auth.profile?.id},user_id_2.eq.${auth.profile?.id}`);
+
+  if (error) {
+    console.error(error);
+    return;
+  }
+
+  if (data) {
+    console.log(data);
+
+    // Clear the stored data so just the up-to-date info is used/displayed
+    friends.value = [];
+
+    // Loop through each row of the data
+    data.forEach(async (friend) => {
+      // Get the user_profile of the other user
+      // If the this user's id matches user 1 in the friendship, then get user 2's profile data
+      if (friend.user_id_1 === auth.profile?.id) {
+        // Get the other user's profile data
+        const { data, error } = await supabase
+          .from("user_profiles")
+          .select()
+          .eq("id", friend.user_id_2)
+          .limit(1);
+
+        if (error) {
+          console.error(error);
+          return;
+        }
+
+        if (data) {
+          // Store the data from the friend that is needed by the UI
+          friends.value.push({
+            id: data[0]?.id ?? "",
+            name: data[0]?.username ?? "",
+          });
+        }
+      }
+      // If the this user's id matches user 2 in the friendship, then get user 1's profile data
+      else {
+        // Get the other user's profile data
+        const { data, error } = await supabase
+          .from("user_profiles")
+          .select()
+          .eq("id", friend.user_id_1)
+          .limit(1);
+
+        if (error) {
+          console.error(error);
+          return;
+        }
+
+        if (data) {
+          // Store the data from the friend that is needed by the UI
+          friends.value.push({
+            id: data[0]?.id ?? "",
+            name: data[0]?.username ?? "",
+          });
+        }
+      }
+    });
+  }
 }
 
 async function removeFriend(friendId: string): Promise<void> {
   console.log("Remove " + friendId);
+
+  // Delete the friends row that includes both this user and the friend id
+  const { error } = await supabase.from("friends").delete().or(`and(
+      user_id_1.eq.${auth.profile?.id},
+      user_id_2.eq.${friendId}),
+    and(
+      user_id_1.eq.${friendId},
+      user_id_2.eq.${auth.profile?.id})`);
+
+  if (error) {
+    console.error(error);
+    return;
+  }
+}
+
+function updateLists() {
+  getFriendRequests();
+  getFriends();
 }
 
 onMounted(() => {
   if (!auth.user) return;
 
-  // If a friend request is received, handle the message in handleFriendRequest
+  // If a friend request is received, update the list of friend requests using getFriendRequests
   realtime.on(
     `${REALTIME.TOPICS.USER}${auth.user.id}`,
     REALTIME.EVENTS.FRIEND_REQUEST,
     getFriendRequests,
   );
 
+  // If a friend request is accepted, update the lists of friends and friend requests
+  realtime.on(
+    `${REALTIME.TOPICS.USER}${auth.user.id}`,
+    REALTIME.EVENTS.FRIEND_ACCEPTED,
+    updateLists,
+  );
+
   getFriendRequests();
+  getFriends();
 });
 
 onBeforeUnmount(() => {
   if (!auth.user) return;
 
-  // Clean up the subscription to friend requests
+  // Clean up the subscriptions
   realtime.off(
     `${REALTIME.TOPICS.USER}${auth.user.id}`,
     REALTIME.EVENTS.FRIEND_REQUEST,
     getFriendRequests,
+  );
+  realtime.on(
+    `${REALTIME.TOPICS.USER}${auth.user.id}`,
+    REALTIME.EVENTS.FRIEND_ACCEPTED,
+    updateLists,
   );
 });
 </script>
@@ -202,7 +338,7 @@ onBeforeUnmount(() => {
     <USeparator class="separator" color="neutral" size="sm" label="Friend Requests" />
     <div class="horizontal-layout">
       <UInput v-model="requestId" placeholder="Friend's code" />
-      <UButton class="select-button" @click="sendFriendCode">Send Request</UButton>
+      <UButton class="select-button" @click="sendFriendRequest">Send Request</UButton>
     </div>
     <div class="margin-top-15 rounded-md border-0 p-2.5 ring ring-inset ring-accented">
       <div v-if="friendRequests && friendRequests.length > 0" class="friends-container">
@@ -238,22 +374,25 @@ onBeforeUnmount(() => {
     </div>
 
     <USeparator class="separator" color="neutral" size="sm" label="Friends" />
-    <div class="flex flex-col gap-2.5">
+    <div v-if="friends && friends.length > 0" class="flex flex-col gap-2.5">
       <div
         v-for="friend in friends"
-        :key="friend"
+        :key="friend.id"
         class="friend-request rounded-md border-0 ring ring-inset ring-accented"
       >
-        <p class="content-center">{{ friend }}</p>
+        <p class="content-center">{{ friend.name }}</p>
         <UButton
           variant="subtle"
           icon="i-carbon-close-outline"
           color="error"
-          @click="removeFriend(friend)"
+          @click="removeFriend(friend.id)"
         >
           Remove
         </UButton>
       </div>
+    </div>
+    <div v-else>
+      <p class="text-sm text-center text-muted">No Friends</p>
     </div>
   </div>
 </template>

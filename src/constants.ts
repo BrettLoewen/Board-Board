@@ -44,5 +44,6 @@ export const REALTIME = {
   },
   EVENTS: {
     FRIEND_REQUEST: "friend_request",
+    FRIEND_ACCEPTED: "friend_accepted",
   },
 };
