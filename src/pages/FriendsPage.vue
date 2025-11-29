@@ -19,6 +19,8 @@ const friends = ref<{ id: string; name: string }[]>([]);
 const friendRequests = ref<{ id: string; name: string }[]>([]);
 const friendRequestSenders = ref<string[]>([]);
 
+const friendRequestError = ref<string>("");
+
 // Return the user to the dashboard page
 function toDashboardPage(): void {
   router.push(ROUTES.DASHBOARD);
@@ -92,8 +94,18 @@ async function sendFriendRequest(): Promise<void> {
   });
 
   if (error) {
-    console.log(error);
-    return;
+    // If there was an error, and its message has a mapped display message, display that
+    if (REALTIME.ERRORS.MAP.has(error.message)) {
+      friendRequestError.value = REALTIME.ERRORS.MAP.get(error.message);
+    }
+    // Otherwise display a default error message
+    else {
+      friendRequestError.value = REALTIME.ERRORS.DEFAULT;
+    }
+  }
+  // If the request was sent successfully, ensure no error message is being displayed
+  else {
+    friendRequestError.value = "";
   }
 
   // If the friend request creation in the database was successful and a user id for that user was received,
@@ -111,7 +123,7 @@ async function sendFriendRequest(): Promise<void> {
 async function acceptFriendRequest(requestId: string): Promise<void> {
   console.log("Accept request from " + requestId);
 
-  //
+  // Tell the database to accept this friend request and make a friends row between these users
   const { data, error } = await supabase.rpc("accept_friend_request", {
     friend_request_id: requestId,
   });
@@ -120,7 +132,7 @@ async function acceptFriendRequest(requestId: string): Promise<void> {
     console.log(error);
   }
 
-  //
+  // Update the UI to display the new friendship and send a message to the other user so it can also update its UI as needed
   if (data) {
     console.log(data);
     // Update the friends page UI
@@ -137,7 +149,7 @@ async function acceptFriendRequest(requestId: string): Promise<void> {
 async function rejectFriendRequest(requestId: string): Promise<void> {
   console.log("Reject request from " + requestId);
 
-  //
+  // Tell the database to delete this friend request
   const { error } = await supabase.rpc("delete_friend_request", {
     friend_request_id: requestId,
   });
@@ -146,6 +158,7 @@ async function rejectFriendRequest(requestId: string): Promise<void> {
     console.log(error);
   }
 
+  // Update the list of friend requests now that the request has been deleted
   getFriendRequests();
 }
 
@@ -222,17 +235,33 @@ async function getFriends(): Promise<void> {
 async function removeFriend(friendId: string): Promise<void> {
   console.log("Remove " + friendId);
 
-  // Delete the friends row that includes both this user and the friend id
-  const { error } = await supabase.from("friends").delete().or(`and(
-      user_id_1.eq.${auth.profile?.id},
-      user_id_2.eq.${friendId}),
-    and(
-      user_id_1.eq.${friendId},
-      user_id_2.eq.${auth.profile?.id})`);
+  let userId1;
+  let userId2;
+
+  // If the user's id is smaller than the friend's user id
+  if (auth.profile?.id < friendId) {
+    userId1 = auth.profile?.id;
+    userId2 = friendId;
+  }
+  // If the friend's user id is smaller than the user's id
+  else {
+    userId1 = friendId;
+    userId2 = auth.profile?.id;
+  }
+
+  // Delete the friends row that matches that sorting order
+  const { error } = await supabase
+    .from("friends")
+    .delete()
+    .eq("user_id_1", userId1)
+    .eq("user_id_2", userId2);
 
   if (error) {
     console.error(error);
     return;
+  } else {
+    // Update the friends list to keep it up to date
+    getFriends();
   }
 }
 
@@ -242,6 +271,7 @@ function updateLists() {
 }
 
 onMounted(() => {
+  // If the user is somehow not authenticated on this page, do not setup subscriptions that depend on an authenticated user id
   if (!auth.user) return;
 
   // If a friend request is received, update the list of friend requests using getFriendRequests
@@ -258,11 +288,13 @@ onMounted(() => {
     updateLists,
   );
 
+  // Get the data to display the lists of friends and friend requests
   getFriendRequests();
   getFriends();
 });
 
 onBeforeUnmount(() => {
+  // If the user is somehow not authenticated on this page, do not setup subscriptions that depend on an authenticated user id
   if (!auth.user) return;
 
   // Clean up the subscriptions
@@ -340,8 +372,9 @@ onBeforeUnmount(() => {
       <UInput v-model="requestId" placeholder="Friend's code" />
       <UButton class="select-button" @click="sendFriendRequest">Send Request</UButton>
     </div>
+    <div v-if="friendRequestError" class="mt-2 text-sm text-error">{{ friendRequestError }}</div>
     <div class="margin-top-15 rounded-md border-0 p-2.5 ring ring-inset ring-accented">
-      <div v-if="friendRequests && friendRequests.length > 0" class="friends-container">
+      <div v-if="friendRequests && friendRequests.length > 0" class="friend-requests-container">
         <p class="text-sm">Pending Friend Requests</p>
         <div
           class="friend-request rounded-md border-0 ring ring-inset ring-accented"
@@ -353,6 +386,7 @@ onBeforeUnmount(() => {
             <UButton
               variant="subtle"
               icon="i-carbon-checkmark-outline"
+              class="friend-request-primary-button"
               @click="acceptFriendRequest(friendRequest.id)"
             >
               Accept
@@ -361,6 +395,7 @@ onBeforeUnmount(() => {
               variant="subtle"
               icon="i-carbon-close-outline"
               color="error"
+              class="friend-request-error-button"
               @click="rejectFriendRequest(friendRequest.id)"
             >
               Reject
@@ -385,6 +420,7 @@ onBeforeUnmount(() => {
           variant="subtle"
           icon="i-carbon-close-outline"
           color="error"
+          class="friend-request-error-button"
           @click="removeFriend(friend.id)"
         >
           Remove
@@ -488,7 +524,7 @@ ol.normal {
   margin-top: 15px;
 }
 
-.friends-container {
+.friend-requests-container {
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -499,5 +535,19 @@ ol.normal {
   flex-direction: row;
   justify-content: space-between;
   padding: 10px;
+}
+
+.friend-request-primary-button:hover {
+  cursor: pointer;
+}
+.friend-request-primary-button:active {
+  background-color: var(--color-primary-800);
+}
+
+.friend-request-error-button:hover {
+  cursor: pointer;
+}
+.friend-request-error-button:active {
+  background-color: var(--color-error-800);
 }
 </style>

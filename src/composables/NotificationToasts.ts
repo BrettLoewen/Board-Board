@@ -17,6 +17,14 @@ export function useNotificationToasts() {
     });
   }
 
+  // Display a toast to inform the user that one of their friend requests was accepted
+  function handleNewFriend() {
+    toast.add({
+      title: "A friend request was accepted!",
+      icon: "i-fluent-people-community-16-regular",
+    });
+  }
+
   watch(
     () => auth.user,
     (user) => {
@@ -51,6 +59,13 @@ export function useNotificationToasts() {
         REALTIME.EVENTS.FRIEND_REQUEST,
         handleFriendRequest,
       );
+
+      // If a friend request is accepted, handle the message in handleNewFriend
+      realtime.on(
+        `${REALTIME.TOPICS.USER}${auth.user.id}`,
+        REALTIME.EVENTS.FRIEND_ACCEPTED,
+        handleNewFriend,
+      );
     }
   }
 
@@ -69,11 +84,16 @@ export function useNotificationToasts() {
     }
     // If there is stored user data, use it to clean up subscriptions
     else {
-      // Clean up the subscription to friend requests
+      // Clean up the subscription to received and accepted friend requests
       realtime.off(
         `${REALTIME.TOPICS.USER}${user.value.id}`,
         REALTIME.EVENTS.FRIEND_REQUEST,
         handleFriendRequest,
+      );
+      realtime.on(
+        `${REALTIME.TOPICS.USER}${user.value.id}`,
+        REALTIME.EVENTS.FRIEND_ACCEPTED,
+        handleNewFriend,
       );
     }
   }
