@@ -90,7 +90,7 @@ export function useNotificationToasts() {
         REALTIME.EVENTS.FRIEND_REQUEST,
         handleFriendRequest,
       );
-      realtime.on(
+      realtime.off(
         `${REALTIME.TOPICS.USER}${user.value.id}`,
         REALTIME.EVENTS.FRIEND_ACCEPTED,
         handleNewFriend,

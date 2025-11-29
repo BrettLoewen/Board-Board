@@ -36,7 +36,8 @@ export const useAuthStore = defineStore("auth", () => {
       // If the user was signed out, then redirect to root
       if (!user.value) {
         profile.value = null;
-        if (router.currentRoute.value.path !== ROUTES.ROOT) {
+        if (router.currentRoute.value.meta?.requiresAuth) {
+          // console.log("Redirecting to root");
           router.push({ path: ROUTES.ROOT });
         }
       }

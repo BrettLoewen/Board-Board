@@ -30,6 +30,24 @@ test.describe("Unauthenticated Routes", () => {
     await expect(welcomeNotice).toHaveCount(1);
   });
 
+  test("/settings route is protected", async ({ page }) => {
+    // Go to the settings page without logging in
+    await page.goto("http://localhost:5173/Board-Board/dashboard/settings");
+
+    // Verify that the user was returned to the welcome page
+    const welcomeNotice = page.locator("h1", { hasText: "Welcome to Board Board!" });
+    await expect(welcomeNotice).toHaveCount(1);
+  });
+
+  test("/friends route is protected", async ({ page }) => {
+    // Go to the friends page without logging in
+    await page.goto("http://localhost:5173/Board-Board/dashboard/friends");
+
+    // Verify that the user was returned to the welcome page
+    const welcomeNotice = page.locator("h1", { hasText: "Welcome to Board Board!" });
+    await expect(welcomeNotice).toHaveCount(1);
+  });
+
   test("/email route works", async ({ page }) => {
     // Go to a non-existant page
     await page.goto("http://localhost:5173/Board-Board/email");
@@ -53,7 +71,7 @@ test.describe("Unauthenticated Routes", () => {
     await page.goto("http://localhost:5173/Board-Board/test");
 
     // Verify that the user was redirected to the 404 page
-    const errorMessage = page.locator("h1", { hasText: "404" });
+    const errorMessage = page.locator("h1", { hasText: "404 Error" });
     await expect(errorMessage).toHaveCount(1);
 
     // Return to the welcome page
