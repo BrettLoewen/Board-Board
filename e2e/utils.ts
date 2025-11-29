@@ -162,3 +162,28 @@ export async function navigateToSettingsPageFromDashboard(page: Page) {
   const settingsPageHeader = page.locator("h1", { hasText: "Settings" });
   await expect(settingsPageHeader).toHaveCount(1);
 }
+
+export async function signUpToFriendsPage(
+  page: Page,
+  userEmail: string,
+  userPassword: string,
+  userName: string,
+) {
+  // Sign up
+  await signUp(page, userEmail, userPassword, userName);
+
+  // Open the user dropdown
+  const userButton = page.locator("button.navbar-right-button");
+  await expect(userButton).toHaveCount(1);
+  await userButton.click();
+
+  // Verify the friends button exists and click it
+  const friendsButton = page.locator("a", { hasText: "Friends" });
+  await expect(friendsButton).toBeVisible();
+  await expect(friendsButton).toHaveCount(1);
+  await friendsButton.click();
+
+  // Verify that the friends page was reached
+  const friendsPageHeader = page.locator("h1", { hasText: "Friends" });
+  await expect(friendsPageHeader).toHaveCount(1);
+}
