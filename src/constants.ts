@@ -30,10 +30,43 @@ export const AUTH = {
 };
 
 export const ROUTES = {
-  NOT_FOUND: "/:pathMatch(.*)*",
+  NOT_FOUND: "/:catchAll(.*)",
   ROOT: "/",
   EMAIL: "/email",
   DASHBOARD: "/dashboard",
   FRIENDS: "/dashboard/friends",
   SETTINGS: "/dashboard/settings",
+};
+
+const friendRequestErrorMessageMap = new Map();
+friendRequestErrorMessageMap.set(
+  "You can only send a friend request from yourself",
+  "Invalid Friend Code!",
+);
+friendRequestErrorMessageMap.set(
+  "You can only send a friend request to a valid friend code",
+  "Invalid Friend Code!",
+);
+friendRequestErrorMessageMap.set(
+  "You cannot send a friend request to yourself",
+  "You cannot send a friend request to yourself!",
+);
+friendRequestErrorMessageMap.set(
+  "You cannot send a friend request to a user that you are already friends with",
+  "You are already friends with that user!",
+);
+
+export const REALTIME = {
+  TOPICS: {
+    USER: "user:",
+  },
+  EVENTS: {
+    FRIEND_REQUEST: "friend_request",
+    FRIEND_ACCEPTED: "friend_accepted",
+  },
+};
+
+export const FRIEND_REQUEST_ERRORS = {
+  MAP: friendRequestErrorMessageMap,
+  DEFAULT: "Invalid Friend Code!",
 };

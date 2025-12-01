@@ -12,12 +12,12 @@ import SettingsPage from "@/pages/SettingsPage.vue";
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes: [
-    { path: ROUTES.NOT_FOUND, component: NotFoundPage },
     { path: ROUTES.ROOT, component: WelcomePage },
     { path: ROUTES.EMAIL, component: EmailConfirmationPage },
     { path: ROUTES.DASHBOARD, component: DashboardPage, meta: { requiresAuth: true } },
     { path: ROUTES.FRIENDS, component: FriendsPage, meta: { requiresAuth: true } },
     { path: ROUTES.SETTINGS, component: SettingsPage, meta: { requiresAuth: true } },
+    { path: ROUTES.NOT_FOUND, component: NotFoundPage },
   ],
 });
 
@@ -27,7 +27,7 @@ router.beforeEach(async (to) => {
 
   // If it does not, continue to the route
   if (!requiresAuth) {
-    // console.log("not protected route " + to.fullPath);
+    // console.log("not protected route: " + to.fullPath);
     return true;
   }
   // If it does, check if the user is authenticated
@@ -36,6 +36,7 @@ router.beforeEach(async (to) => {
 
     // If the user is authenticated, continue to the route
     if (auth.user) {
+      // console.log("user is authenticated, continuing to " + to.fullPath);
       return true;
     }
 
@@ -45,11 +46,12 @@ router.beforeEach(async (to) => {
     // If the user was found, continue to the route
     if (session?.user) {
       await auth.fetchProfile();
+      // console.log("user was actually authenticated, continuing to " + to.fullPath);
       return true;
     }
 
     // If the user was unable to be authenticated, return the site's homepage
-    // console.log("not authenticated " + to.fullPath);
+    // console.log("not authenticated. Redirecting to root from " + to.fullPath);
     return ROUTES.ROOT;
   }
 });
