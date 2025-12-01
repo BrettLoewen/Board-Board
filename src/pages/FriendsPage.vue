@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { useClipboard } from "@vueuse/core";
-import { REALTIME, ROUTES } from "@/constants";
+import { FRIEND_REQUEST_ERRORS, REALTIME, ROUTES } from "@/constants";
 import router from "@/router";
 import { useAuthStore } from "@/stores/auth";
 import { supabase } from "@/lib/supabaseClient";
@@ -95,12 +95,12 @@ async function sendFriendRequest(): Promise<void> {
 
   if (error) {
     // If there was an error, and its message has a mapped display message, display that
-    if (REALTIME.ERRORS.MAP.has(error.message)) {
-      friendRequestError.value = REALTIME.ERRORS.MAP.get(error.message);
+    if (FRIEND_REQUEST_ERRORS.MAP.has(error.message)) {
+      friendRequestError.value = FRIEND_REQUEST_ERRORS.MAP.get(error.message);
     }
     // Otherwise display a default error message
     else {
-      friendRequestError.value = REALTIME.ERRORS.DEFAULT;
+      friendRequestError.value = FRIEND_REQUEST_ERRORS.DEFAULT;
     }
   }
   // If the request was sent successfully, ensure no error message is being displayed
@@ -323,7 +323,7 @@ onBeforeUnmount(() => {
 
     <USeparator class="separator" color="neutral" size="sm" label="Your Friend Code" />
     <div class="horizontal-layout">
-      <UInput disabled :value="friendCode ?? ''">
+      <UInput disabled :value="friendCode ?? ''" name="friend-code">
         <template #trailing>
           <UTooltip text="Copy to clipboard">
             <UButton
@@ -369,7 +369,7 @@ onBeforeUnmount(() => {
 
     <USeparator class="separator" color="neutral" size="sm" label="Friend Requests" />
     <div class="horizontal-layout">
-      <UInput v-model="requestId" placeholder="Friend's code" />
+      <UInput v-model="requestId" placeholder="Friend's code" name="friend-request" />
       <UButton class="select-button" @click="sendFriendRequest">Send Request</UButton>
     </div>
     <div v-if="friendRequestError" class="mt-2 text-sm text-error">{{ friendRequestError }}</div>

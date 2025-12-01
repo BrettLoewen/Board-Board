@@ -38,20 +38,20 @@ export const ROUTES = {
   SETTINGS: "/dashboard/settings",
 };
 
-const realtimeErrorMessageMap = new Map();
-realtimeErrorMessageMap.set(
+const friendRequestErrorMessageMap = new Map();
+friendRequestErrorMessageMap.set(
   "You can only send a friend request from yourself",
   "Invalid Friend Code!",
 );
-realtimeErrorMessageMap.set(
+friendRequestErrorMessageMap.set(
   "You can only send a friend request to a valid friend code",
   "Invalid Friend Code!",
 );
-realtimeErrorMessageMap.set(
+friendRequestErrorMessageMap.set(
   "You cannot send a friend request to yourself",
   "You cannot send a friend request to yourself!",
 );
-realtimeErrorMessageMap.set(
+friendRequestErrorMessageMap.set(
   "You cannot send a friend request to a user that you are already friends with",
   "You are already friends with that user!",
 );
@@ -64,8 +64,9 @@ export const REALTIME = {
     FRIEND_REQUEST: "friend_request",
     FRIEND_ACCEPTED: "friend_accepted",
   },
-  ERRORS: {
-    MAP: realtimeErrorMessageMap,
-    DEFAULT: "Invalid Friend Code!",
-  },
+};
+
+export const FRIEND_REQUEST_ERRORS = {
+  MAP: friendRequestErrorMessageMap,
+  DEFAULT: "Invalid Friend Code!",
 };

@@ -187,3 +187,50 @@ export async function signUpToFriendsPage(
   const friendsPageHeader = page.locator("h1", { hasText: "Friends" });
   await expect(friendsPageHeader).toHaveCount(1);
 }
+
+export async function sendFriendRequest(
+  user1Page: Page,
+  user1Name: string,
+  user2Page: Page,
+  user2Name: string,
+) {
+  // Verify that both users are actually on the friends page (sanity check)
+  const user1FriendsPageHeader = user1Page.locator("h1", { hasText: "Friends" });
+  await expect(user1FriendsPageHeader).toHaveCount(1);
+  const user2FriendsPageHeader = user2Page.locator("h1", { hasText: "Friends" });
+  await expect(user2FriendsPageHeader).toHaveCount(1);
+
+  // Copy user1's friend code
+  const copyButton = user1Page.locator("button.clipboard-button");
+  await expect(copyButton).toBeVisible();
+  await expect(copyButton).toHaveCount(1);
+  await copyButton.click();
+  const friendCode = await user1Page.evaluate(() => navigator.clipboard.readText());
+
+  // Fill in user1's friend code into user2's friend request field
+  const friendRequestInput = user2Page.locator('input[name="friend-request"]');
+  await expect(friendRequestInput).toBeVisible();
+  await expect(friendRequestInput).toHaveCount(1);
+  await friendRequestInput.fill(friendCode);
+
+  // Send a friend request from user2 to user1
+  const friendRequestButton = user2Page.locator("button", { hasText: "Send Request" });
+  await expect(friendRequestButton).toBeVisible();
+  await expect(friendRequestButton).toHaveCount(1);
+  await friendRequestButton.click();
+
+  // Verify that user1 recieved a friend request from user2
+  const friendRequestText = user1Page.locator("p.content-center", { hasText: user2Name });
+  await expect(friendRequestText).toBeVisible();
+  await expect(friendRequestText).toHaveCount(1);
+  const friendRequestAcceptButton = user1Page.locator("button.friend-request-primary-button", {
+    hasText: "Accept",
+  });
+  await expect(friendRequestAcceptButton).toBeVisible();
+  await expect(friendRequestAcceptButton).toHaveCount(1);
+  const friendRequestRejectButton = user1Page.locator("button.friend-request-error-button", {
+    hasText: "Reject",
+  });
+  await expect(friendRequestRejectButton).toBeVisible();
+  await expect(friendRequestRejectButton).toHaveCount(1);
+}
