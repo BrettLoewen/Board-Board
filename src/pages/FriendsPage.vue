@@ -84,8 +84,6 @@ async function getFriendRequests(): Promise<void> {
 }
 
 async function sendFriendRequest(): Promise<void> {
-  console.log("Sending code " + requestId.value);
-
   // Tell the database to send a friend request to the given friend code.
   // If successful, will get back the user id that the friend request was sent to.
   const { data, error } = await supabase.rpc("send_friend_request", {
@@ -110,19 +108,14 @@ async function sendFriendRequest(): Promise<void> {
 
   // If the friend request creation in the database was successful and a user id for that user was received,
   // send a broadcast message to that user to inform them of the friend request.
-  console.log(data);
   if (data) {
     const topic = REALTIME.TOPICS.USER + data;
     const event = REALTIME.EVENTS.FRIEND_REQUEST;
-    console.log(await realtime.sendToTopic(topic, event, {}));
-  } else {
-    console.log("Friend request created previously, updating timestamp");
+    await realtime.sendToTopic(topic, event, {});
   }
 }
 
 async function acceptFriendRequest(requestId: string): Promise<void> {
-  console.log("Accept request from " + requestId);
-
   // Tell the database to accept this friend request and make a friends row between these users
   const { data, error } = await supabase.rpc("accept_friend_request", {
     friend_request_id: requestId,
@@ -134,7 +127,6 @@ async function acceptFriendRequest(requestId: string): Promise<void> {
 
   // Update the UI to display the new friendship and send a message to the other user so it can also update its UI as needed
   if (data) {
-    console.log(data);
     // Update the friends page UI
     getFriendRequests();
     getFriends();
@@ -147,15 +139,13 @@ async function acceptFriendRequest(requestId: string): Promise<void> {
 }
 
 async function rejectFriendRequest(requestId: string): Promise<void> {
-  console.log("Reject request from " + requestId);
-
   // Tell the database to delete this friend request
   const { error } = await supabase.rpc("delete_friend_request", {
     friend_request_id: requestId,
   });
 
   if (error) {
-    console.log(error);
+    console.error(error);
   }
 
   // Update the list of friend requests now that the request has been deleted
@@ -176,8 +166,6 @@ async function getFriends(): Promise<void> {
   }
 
   if (data) {
-    console.log(data);
-
     // Clear the stored data so just the up-to-date info is used/displayed
     friends.value = [];
 
@@ -233,8 +221,6 @@ async function getFriends(): Promise<void> {
 }
 
 async function removeFriend(friendId: string): Promise<void> {
-  console.log("Remove " + friendId);
-
   let userId1;
   let userId2;
 
