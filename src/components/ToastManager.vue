@@ -3,6 +3,7 @@ import { REALTIME } from "@/constants";
 import { useAuthStore } from "@/stores/auth";
 import { useRealtimeStore } from "@/stores/realtime";
 import { ref, watch } from "vue";
+import { useToast } from "vue-toastification";
 
 const toast = useToast();
 const auth = useAuthStore();
@@ -11,17 +12,19 @@ const user = ref();
 
 // Display a toast to inform the user that they received a friend request
 function handleFriendRequest() {
-  toast.add({
-    title: "You got a new friend request!",
+  console.log("Showing friend request toast");
+  toast("You got a new friend request!", {
     icon: "i-fluent-people-community-16-regular",
+    toastClassName: "toast",
   });
 }
 
 // Display a toast to inform the user that one of their friend requests was accepted
 function handleNewFriend() {
-  toast.add({
-    title: "A friend request was accepted!",
+  console.log("Showing new friend toast");
+  toast("A friend request was accepted!", {
     icon: "i-fluent-people-community-16-regular",
+    toastClassName: "toast",
   });
 }
 
@@ -102,3 +105,10 @@ function unsubscribeFromEvents() {
 <template>
   <slot />
 </template>
+
+<style>
+.toast {
+  background-color: var(--color-primary-400);
+  color: white;
+}
+</style>
