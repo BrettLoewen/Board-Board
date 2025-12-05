@@ -3,7 +3,7 @@
 create table boards
 (
   id uuid not null primary key,
-  owner_id uuid not null references auth.users(id) on delete cascade,
+  owner_id uuid not null references user_profiles(id) on delete cascade,
   name text,
   created_at timestamptz default now(),
   updated_at timestamptz default now(),
@@ -26,7 +26,7 @@ execute procedure public.set_updated_at();
 create table shared_boards
 (
   board_id uuid not null references boards(id) on delete cascade,
-  shared_to_id uuid not null references auth.users(id) on delete cascade,
+  shared_to_id uuid not null references user_profiles(id) on delete cascade,
   created_at timestamptz default now(),
 
   -- A unique shared_boards row should be a unique combination of board_id and shared_to_id (one board cannot be shared to one user more than once)
@@ -63,7 +63,7 @@ create policy "Users can view boards they own or that are shared to them"
 -- A shared_boards row should be viewable by:
 -- - Users who own that board
 -- - Users that the board was shared to
-create policy "Users can view shared_boards for boards they own or that are shared to them"
+create policy "Users can view their shared_boards"
   on shared_boards
   for select
   to authenticated
@@ -119,7 +119,7 @@ create policy "Users can delete their boards"
 -- A shared_boards row should be deletable by:
 -- - Users who own that board (remove someone's access to the board)
 -- - Users that the board was shared to (remove your own access to a board)
-create policy "Users can delete shared_boards if they own the board or were shared to"
+create policy "Users can delete their shared_boards"
   on shared_boards
   for delete
   to authenticated
