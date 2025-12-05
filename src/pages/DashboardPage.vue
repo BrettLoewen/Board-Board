@@ -1,14 +1,16 @@
 <script setup lang="ts">
-import { h, ref, resolveComponent } from "vue";
+import { h, onMounted, ref, resolveComponent, watch } from "vue";
 import { ROUTES } from "@/constants";
 import { useAuthStore } from "@/stores/auth";
 import type { DropdownMenuItem, TableColumn } from "@nuxt/ui";
 import type { Column } from "@tanstack/vue-table";
+import { supabase } from "@/lib/supabaseClient";
 
 type Board = {
   name: string;
-  openedAt: string;
   ownedBy: string;
+  createdAt: string;
+  updatedAt: string;
 };
 
 const UButton = resolveComponent("UButton"); // Used to create and define a UButton in code in the table's header
@@ -58,23 +60,7 @@ const items = ref<DropdownMenuItem[][]>([
 ]);
 
 // The data used by the board table (replace with data from supabase later)
-const data = ref([
-  {
-    name: "Board 1",
-    ownedBy: "Billy",
-    openedAt: "2025-10-11T15:30:00",
-  },
-  {
-    name: "First Board",
-    ownedBy: "Alfred",
-    openedAt: "2025-10-21T15:30:00",
-  },
-  {
-    name: "Alpha",
-    ownedBy: "Alfred",
-    openedAt: "2025-10-31T15:30:00",
-  },
-]);
+const boards = ref<Board[]>([]);
 
 // Link the column data to a column in the table and format the data as necessary
 const columns: TableColumn<Board>[] = [
@@ -87,10 +73,23 @@ const columns: TableColumn<Board>[] = [
     header: ({ column }) => getHeader(column, "Owned By"),
   },
   {
-    accessorKey: "openedAt",
-    header: ({ column }) => getHeader(column, "Opened At"),
+    accessorKey: "createdAt",
+    header: ({ column }) => getHeader(column, "Created At"),
     cell: ({ row }) => {
-      return new Date(row.getValue("openedAt")).toLocaleString("en-US", {
+      return new Date(row.getValue("createdAt")).toLocaleString("en-US", {
+        day: "numeric",
+        month: "short",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: true,
+      });
+    },
+  },
+  {
+    accessorKey: "updatedAt",
+    header: ({ column }) => getHeader(column, "Last Updated At"),
+    cell: ({ row }) => {
+      return new Date(row.getValue("updatedAt")).toLocaleString("en-US", {
         day: "numeric",
         month: "short",
         hour: "2-digit",
@@ -128,9 +127,122 @@ function getHeader(column: Column<Board>, label: string) {
   });
 }
 
-function createBoard(): void {
-  console.log("Create board");
+// Refs for tracking and displaying data in the create board modal
+const newBoardName = ref("");
+const boardNameError = ref("");
+const createBoardModalOpen = ref(false);
+
+// If the create board modal was closed using the modal's own close button, reset the modal refs
+watch(createBoardModalOpen, (newValue) => {
+  if (!newValue) {
+    boardNameError.value = "";
+    newBoardName.value = "";
+  }
+});
+
+// If a new board was submitted for creation, validate the name and then create the board
+async function createBoard(close: () => void): Promise<void> {
+  // If the board's name is not long enough, say so and stop
+  if (!newBoardName.value || newBoardName.value.length < 3) {
+    boardNameError.value = "Board name is too short!";
+    return;
+  }
+
+  // If the board's name is valid, reset the error message
+  boardNameError.value = "";
+
+  // Close the modal
+  close();
+
+  console.log("Create board " + newBoardName.value);
+
+  // Create the board
+  const { error } = await supabase
+    .from("boards")
+    .insert({ name: newBoardName.value, owner_id: auth.user?.id ?? "" });
+
+  if (error) {
+    console.error(error);
+    return;
+  }
+
+  // Reset the board name ref
+  newBoardName.value = "";
+
+  // Update the list of boards to include the newly created board
+  getBoards();
 }
+
+// If the create board modal was closed using the cancel button, reset the modal refs
+async function cancelCreateBoard(close: () => void): Promise<void> {
+  boardNameError.value = "";
+  newBoardName.value = "";
+
+  // Close the modal
+  close();
+}
+
+async function getBoards(): Promise<void> {
+  // Get the data for all boards owned by this user
+  const { data: boardsData, error: boardsError } = await supabase
+    .from("boards")
+    .select()
+    .eq("owner_id", auth.user?.id ?? "");
+
+  // Get the data for all boards that have been shared to this user
+  const { data: sharedBoardsData, error: sharedBoardsError } = await supabase
+    .from("shared_boards")
+    .select()
+    .eq("shared_to_id", auth.user?.id ?? "");
+
+  if (boardsError) {
+    console.error(boardsError);
+    return;
+  }
+  if (sharedBoardsError) {
+    console.error(sharedBoardsError);
+    return;
+  }
+
+  console.log(boardsData);
+  console.log(sharedBoardsData);
+
+  // Clear the list of boards
+  boards.value = [];
+
+  if (boardsData) {
+    // Loop through each row of the data
+    boardsData.forEach((board) => {
+      //
+      boards.value.push({
+        name: board.name ?? "",
+        ownedBy: "You",
+        createdAt: new Date(board.created_at ?? "")
+          .toLocaleString("en-US", {
+            day: "numeric",
+            month: "short",
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: true,
+          })
+          .toString(),
+        updatedAt: new Date(board.updated_at ?? 0)
+          .toLocaleString("en-US", {
+            day: "numeric",
+            month: "short",
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: true,
+          })
+          .toString(),
+      });
+    });
+  }
+}
+
+onMounted(() => {
+  getBoards();
+});
 </script>
 
 <template>
@@ -152,14 +264,40 @@ function createBoard(): void {
 
   <div class="main">
     <div class="table-header">
-      <UButton class="create-button" leading-icon="i-lucide-circle-plus" @click="createBoard"
-        >New Board</UButton
+      <UModal
+        title="Create a New Board"
+        v-model:open="createBoardModalOpen"
+        :close="{ class: 'create-board-modal-close-button' }"
       >
+        <UButton
+          class="create-board-button"
+          leading-icon="i-lucide-circle-plus"
+          label="New Board"
+        />
+        <template #body="{ close }">
+          <div class="mb-6 w-full">
+            <UInput v-model="newBoardName" placeholder="Board name" />
+            <div v-if="boardNameError" class="mt-2 text-sm text-error">
+              {{ boardNameError }}
+            </div>
+          </div>
+          <div class="create-board-modal-buttons">
+            <UButton class="create-board-button" label="Create Board" @click="createBoard(close)" />
+            <UButton
+              color="neutral"
+              variant="outline"
+              label="Cancel"
+              class="create-board-modal-cancel-button"
+              @click="cancelCreateBoard(close)"
+            />
+          </div>
+        </template>
+      </UModal>
       <UInput v-model="globalFilter" placeholder="Filter..." />
     </div>
     <UTable
       class="table"
-      :data="data"
+      :data="boards"
       v-model:global-filter="globalFilter"
       v-model:sorting="sorting"
       :columns="columns"
@@ -198,10 +336,31 @@ function createBoard(): void {
   padding: 15px;
 }
 
-.create-button:active {
+.create-board-button:active {
   background-color: var(--color-primary-800);
 }
-.create-button:hover {
+.create-board-button:hover {
+  cursor: pointer;
+}
+
+.create-board-modal-close-button:active {
+  background-color: var(--color-neutral-800);
+}
+.create-board-modal-close-button:hover {
+  cursor: pointer;
+}
+
+.create-board-modal-buttons {
+  display: flex;
+  flex-direction: row;
+  justify-content: center;
+  gap: 10px;
+}
+
+.create-board-modal-cancel-button:active {
+  background-color: var(--color-neutral-800);
+}
+.create-board-modal-cancel-button:hover {
   cursor: pointer;
 }
 

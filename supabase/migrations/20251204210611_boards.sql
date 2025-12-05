@@ -2,7 +2,7 @@
 -- Create a table that is owned by a user and cards can be owned by
 create table boards
 (
-  id uuid not null primary key,
+  id uuid not null primary key default gen_random_uuid(),
   owner_id uuid not null references user_profiles(id) on delete cascade,
   name text,
   created_at timestamptz default now(),
@@ -37,6 +37,48 @@ create table shared_boards
 create index if not exists shared_boards_shared_to_id_idx
 on public.shared_boards (shared_to_id);
 
+--============ Functions to support RLS ============
+create or replace function public.can_select_board(board_id uuid, user_id uuid)
+returns boolean
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  -- If one row exists where
+  return exists (
+    -- The given user owns the given board
+    select 1
+    from public.boards b
+    where b.id = can_select_board.board_id
+      and b.owner_id = can_select_board.user_id
+    -- or
+    union
+    -- The given user was shared the given board
+    select 1
+    from public.shared_boards sb
+    where sb.board_id = can_select_board.board_id
+      and sb.shared_to_id = can_select_board.user_id
+  );
+end;
+$$;
+
+create or replace function can_select_shared_board(board_id uuid, shared_to uuid, user_id uuid)
+returns boolean
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  -- If one row exists where
+  return
+    -- The given user owns the given board
+    (select owner_id from public.boards where id = can_select_shared_board.board_id) = can_select_shared_board.user_id
+    -- Or the given user was shared the given board
+    or can_select_shared_board.shared_to = can_select_shared_board.user_id;
+end;
+$$;
+
 --============ RLS ============
 alter table boards enable row level security;
 alter table shared_boards enable row level security;
@@ -48,17 +90,7 @@ create policy "Users can view boards they own or that are shared to them"
   on boards
   for select
   to authenticated
-  using (
-    -- Board owner
-    owner_id = auth.uid()
-    -- Recipient
-    OR EXISTS (
-      SELECT 1
-      FROM shared_boards sb
-      WHERE sb.board_id = boards.id
-        AND sb.shared_to_id = auth.uid()
-    )
-  );
+  using (can_select_board(id, auth.uid()));
 
 -- A shared_boards row should be viewable by:
 -- - Users who own that board
@@ -67,18 +99,7 @@ create policy "Users can view their shared_boards"
   on shared_boards
   for select
   to authenticated
-  using (
-    -- Board owner
-    EXISTS (
-      SELECT 1
-      FROM boards b
-      WHERE b.id = shared_boards.board_id
-        AND b.owner_id = auth.uid()
-    )
-    OR
-    -- Recipient
-    shared_boards.shared_to_id = auth.uid()
-  );
+  using (can_select_shared_board(board_id, shared_to_id, auth.uid()));
 
 -- Users should be able to create a board that they own
 create policy "Users can create boards"
@@ -93,11 +114,11 @@ create policy "Users can share boards they own"
   for insert
   to authenticated
   with check (
-    EXISTS (
-      SELECT 1
-      FROM boards b
-      WHERE b.id = shared_boards.board_id
-        AND b.owner_id = auth.uid()
+    exists (
+      select 1
+      from boards b
+      where b.id = shared_boards.board_id
+        and b.owner_id = auth.uid()
     )
   );
 
@@ -123,15 +144,4 @@ create policy "Users can delete their shared_boards"
   on shared_boards
   for delete
   to authenticated
-  using (
-    -- Board owner
-    EXISTS (
-      SELECT 1
-      FROM boards b
-      WHERE b.id = shared_boards.board_id
-        AND b.owner_id = auth.uid()
-    )
-    OR
-    -- Recipient
-    shared_to_id = auth.uid()
-  );
+  using (can_select_shared_board(board_id, shared_to_id, auth.uid()));
