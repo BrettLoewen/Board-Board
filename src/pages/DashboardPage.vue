@@ -201,7 +201,7 @@ function getHeader(column: Column<Board>, label: string) {
         ? "i-lucide-arrow-up-narrow-wide"
         : "i-lucide-arrow-down-wide-narrow"
       : "i-lucide-arrow-up-down",
-    class: "-mx-2.5",
+    class: "-mx-2.5 cursor-pointer",
     // Force the sorting order cycle to be: "none" -> "desc" => "asc" -> "none"
     onClick: () => {
       if (isSorted === "asc") {
@@ -344,6 +344,10 @@ async function getBoards(): Promise<void> {
   }
 }
 
+function onSelectBoard(row: Row<Board>) {
+  console.log("Selected " + row.original.name);
+}
+
 // If the create board modal was closed using the modal's own close button, reset the modal refs
 watch(createBoardModalOpen, (newValue) => {
   if (!newValue) {
@@ -413,6 +417,11 @@ onMounted(() => {
       v-model:global-filter="globalFilter"
       v-model:sorting="sorting"
       :columns="columns"
+      @select="onSelectBoard"
+      :ui="{
+        tr: 'cursor-pointer',
+        th: 'cursor-default',
+      }"
     />
   </div>
 </template>
