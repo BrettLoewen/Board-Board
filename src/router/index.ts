@@ -8,6 +8,7 @@ import EmailConfirmationPage from "@/pages/EmailConfirmationPage.vue";
 import NotFoundPage from "@/pages/NotFoundPage.vue";
 import FriendsPage from "@/pages/FriendsPage.vue";
 import SettingsPage from "@/pages/SettingsPage.vue";
+import BoardPage from "@/pages/BoardPage.vue";
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -17,6 +18,7 @@ const router = createRouter({
     { path: ROUTES.DASHBOARD, component: DashboardPage, meta: { requiresAuth: true } },
     { path: ROUTES.FRIENDS, component: FriendsPage, meta: { requiresAuth: true } },
     { path: ROUTES.SETTINGS, component: SettingsPage, meta: { requiresAuth: true } },
+    { path: ROUTES.BOARD_GENERIC, component: BoardPage, meta: { requiresAuth: true } },
     { path: ROUTES.NOT_FOUND, component: NotFoundPage },
   ],
 });

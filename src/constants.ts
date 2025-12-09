@@ -36,6 +36,10 @@ export const ROUTES = {
   DASHBOARD: "/dashboard",
   FRIENDS: "/dashboard/friends",
   SETTINGS: "/dashboard/settings",
+  BOARD_GENERIC: "/board/:id",
+  BOARD: (boardId: string) => {
+    return `/board/${boardId}`;
+  },
 };
 
 const friendRequestErrorMessageMap = new Map();

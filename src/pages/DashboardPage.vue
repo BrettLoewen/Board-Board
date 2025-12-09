@@ -3,10 +3,12 @@ import { h, onMounted, ref, resolveComponent, watch } from "vue";
 import { ROUTES } from "@/constants";
 import { useAuthStore } from "@/stores/auth";
 import { supabase } from "@/lib/supabaseClient";
+import router from "@/router";
 import type { DropdownMenuItem, TableColumn } from "@nuxt/ui";
 import type { Column, Row } from "@tanstack/vue-table";
 
 type Board = {
+  id: string;
   name: string;
   ownedBy: string;
   createdAt: string;
@@ -317,8 +319,9 @@ async function getBoards(): Promise<void> {
   if (boardsData) {
     // Loop through each row of the data
     boardsData.forEach((board) => {
-      //
+      // Get the data from the board and format it as needed
       boards.value.push({
+        id: board.id,
         name: board.name ?? "",
         ownedBy: "You",
         createdAt: new Date(board.created_at ?? "")
@@ -344,8 +347,9 @@ async function getBoards(): Promise<void> {
   }
 }
 
+// Send the user to the page for this board (open the board)
 function onSelectBoard(row: Row<Board>) {
-  console.log("Selected " + row.original.name);
+  router.push(ROUTES.BOARD(row.original.id));
 }
 
 // If the create board modal was closed using the modal's own close button, reset the modal refs
