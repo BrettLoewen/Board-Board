@@ -46,6 +46,11 @@ const renameBoardModalOpen = ref(false);
 // Refs for tracking and displaying data in the delete board modal
 const deleteBoardModalOpen = ref(false);
 
+// Refs for tracking and displaying data in the share board modal
+const shareBoardModalOpen = ref(false);
+const friends = ref<{ id: string; name: string }[]>([]);
+const friendsShared = ref<{ id: string; name: string }[]>([]);
+
 // Defines what is included in the navbar's user dropdown
 const items = ref<DropdownMenuItem[][]>([
   [
@@ -150,7 +155,10 @@ const columns: TableColumn<Board>[] = [
         {
           class: "create-board-button",
           icon: "i-fluent-share-16-regular",
-          onClick: () => console.log("Share " + boardRow.original.name),
+          onClick: () => {
+            shareBoardModalOpen.value = true;
+            selectedBoard.value = boardRow.original;
+          },
         },
         () => {
           return "Share";
@@ -440,6 +448,104 @@ async function deleteBoard(close: () => void): Promise<void> {
   selectedBoard.value = undefined;
 }
 
+async function getFriends(): Promise<void> {
+  // Get the friendship relationships that this user has with other users.
+  // Will be converted to user_profile rows later.
+  const { data, error } = await supabase
+    .from("friends")
+    .select()
+    .or(`user_id_1.eq.${auth.profile?.id},user_id_2.eq.${auth.profile?.id}`);
+
+  if (error) {
+    console.error(error);
+    return;
+  }
+
+  if (data) {
+    // Clear the stored data so just the up-to-date info is used/displayed
+    friends.value = [];
+
+    // Loop through each row of the data
+    data.forEach(async (friend) => {
+      // Get the user_profile of the other user
+      // If the this user's id matches user 1 in the friendship, then get user 2's profile data
+      if (friend.user_id_1 === auth.profile?.id) {
+        // Get the other user's profile data
+        const { data, error } = await supabase
+          .from("user_profiles")
+          .select()
+          .eq("id", friend.user_id_2)
+          .limit(1);
+
+        if (error) {
+          console.error(error);
+          return;
+        }
+
+        if (data) {
+          // Store the data from the friend that is needed by the UI
+          friends.value.push({
+            id: data[0]?.id ?? "",
+            name: data[0]?.username ?? "",
+          });
+        }
+      }
+      // If the this user's id matches user 2 in the friendship, then get user 1's profile data
+      else {
+        // Get the other user's profile data
+        const { data, error } = await supabase
+          .from("user_profiles")
+          .select()
+          .eq("id", friend.user_id_1)
+          .limit(1);
+
+        if (error) {
+          console.error(error);
+          return;
+        }
+
+        if (data) {
+          // Store the data from the friend that is needed by the UI
+          friends.value.push({
+            id: data[0]?.id ?? "",
+            name: data[0]?.username ?? "",
+          });
+        }
+      }
+    });
+  }
+}
+
+// Share the currently selected board to the given friend
+async function shareBoard(close: () => void, friend: string): Promise<void> {
+  if (!selectedBoard.value) {
+    return;
+  }
+
+  console.log("Share board " + selectedBoard.value.name + " to " + friend);
+
+  // Close the modal
+  close();
+
+  // Unselect the board
+  selectedBoard.value = undefined;
+}
+
+// Stop sharing the currently selected board to the given friend
+async function unshareBoard(close: () => void, friend: string): Promise<void> {
+  if (!selectedBoard.value) {
+    return;
+  }
+
+  console.log("Unshare board " + selectedBoard.value.name + " to " + friend);
+
+  // Close the modal
+  close();
+
+  // Unselect the board
+  selectedBoard.value = undefined;
+}
+
 // Send the user to the page for this board (open the board)
 function onSelectBoard(row: Row<Board>) {
   router.push(ROUTES.BOARD(row.original.id));
@@ -463,6 +569,7 @@ watch(renameBoardModalOpen, (newValue) => {
 
 onMounted(() => {
   getBoards();
+  getFriends();
 });
 </script>
 
@@ -574,6 +681,62 @@ onMounted(() => {
       </div>
     </template>
   </UModal>
+  <UModal
+    title="Share Board"
+    description="Share this Board to your friends to collaborate."
+    v-model:open="shareBoardModalOpen"
+    :close="{ class: 'create-board-modal-close-button' }"
+  >
+    <template #body="{ close }">
+      <p
+        v-if="(!friends || friends.length === 0) && (!friendsShared || friendsShared.length === 0)"
+        class="mb-6 text-center text-error"
+      >
+        Without friends, you cannot share Boards to anyone.
+      </p>
+      <div class="flex flex-row w-full justify-between">
+        <div v-if="friends && friends.length > 0" class="share-list">
+          <div
+            v-for="friend in friends"
+            :key="friend.id"
+            class="friend-div rounded-md border-0 ring ring-inset ring-accented"
+          >
+            <p class="content-center">{{ friend.name }}</p>
+            <UButton
+              class="create-board-button"
+              variant="subtle"
+              icon="i-fluent-share-16-regular"
+              label="Share"
+              @click="shareBoard(close, friend.id)"
+            />
+          </div>
+        </div>
+        <div v-else class="share-list">
+          <p class="text-sm text-center text-muted">No Friends</p>
+        </div>
+        <div v-if="friendsShared && friendsShared.length > 0" class="share-list">
+          <div
+            v-for="friendShare in friendsShared"
+            :key="friendShare.id"
+            class="friend-div rounded-md border-0 ring ring-inset ring-accented"
+          >
+            <p class="content-center">{{ friendShare.name }}</p>
+            <UButton
+              class="create-board-button"
+              variant="subtle"
+              icon="i-carbon-close-outline"
+              color="error"
+              label="Unshare"
+              @click="unshareBoard(close, friendShare.id)"
+            />
+          </div>
+        </div>
+        <div v-else class="share-list">
+          <p class="text-sm text-center text-muted">No Shared Friends</p>
+        </div>
+      </div>
+    </template>
+  </UModal>
 </template>
 
 <style>
@@ -650,5 +813,19 @@ onMounted(() => {
     0 3px 1px -2px rgba(0, 0, 0, 0.2),
     0 2px 2px 0 rgba(0, 0, 0, 0.14),
     0 1px 5px 0 rgba(0, 0, 0, 0.12);
+}
+
+.share-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 45%;
+}
+
+.friend-div {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  padding: 10px;
 }
 </style>
