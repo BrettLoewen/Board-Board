@@ -30,10 +30,21 @@ const globalFilter = ref("");
 // The data used by the board table (replace with data from supabase later)
 const boards = ref<Board[]>([]);
 
+const selectedBoard = ref<Board>();
+
 // Refs for tracking and displaying data in the create board modal
-const newBoardName = ref("");
+const createBoardName = ref("");
 const boardNameError = ref("");
 const createBoardModalOpen = ref(false);
+
+// Refs for tracking and displaying data in the rename board modal
+const renameBoardPlaceholder = ref("");
+const renameBoardName = ref("");
+const renameboardError = ref("");
+const renameBoardModalOpen = ref(false);
+
+// Refs for tracking and displaying data in the delete board modal
+const deleteBoardModalOpen = ref(false);
 
 // Defines what is included in the navbar's user dropdown
 const items = ref<DropdownMenuItem[][]>([
@@ -231,7 +242,9 @@ function getBoardItems(boardRow: Row<Board>) {
         icon: "i-fluent-edit-16-regular",
         class: "dropdown-hover",
         onSelect() {
-          console.log("Rename board");
+          renameBoardModalOpen.value = true;
+          renameBoardPlaceholder.value = boardRow.original.name;
+          selectedBoard.value = boardRow.original;
         },
       },
       {
@@ -239,7 +252,8 @@ function getBoardItems(boardRow: Row<Board>) {
         icon: "i-fluent-delete-16-regular",
         class: "dropdown-hover",
         onSelect() {
-          console.log("Delete board");
+          deleteBoardModalOpen.value = true;
+          selectedBoard.value = boardRow.original;
         },
       },
     ],
@@ -249,7 +263,7 @@ function getBoardItems(boardRow: Row<Board>) {
 // If a new board was submitted for creation, validate the name and then create the board
 async function createBoard(close: () => void): Promise<void> {
   // If the board's name is not long enough, say so and stop
-  if (!newBoardName.value || newBoardName.value.length < 3) {
+  if (!createBoardName.value || createBoardName.value.length < 3) {
     boardNameError.value = "Board name is too short!";
     return;
   }
@@ -257,23 +271,23 @@ async function createBoard(close: () => void): Promise<void> {
   // If the board's name is valid, reset the error message
   boardNameError.value = "";
 
-  // Close the modal
-  close();
-
-  console.log("Create board " + newBoardName.value);
+  console.log("Create board " + createBoardName.value);
 
   // Create the board
   const { error } = await supabase
     .from("boards")
-    .insert({ name: newBoardName.value, owner_id: auth.user?.id ?? "" });
+    .insert({ name: createBoardName.value, owner_id: auth.user?.id ?? "" });
 
   if (error) {
     console.error(error);
     return;
   }
 
+  // Close the modal
+  close();
+
   // Reset the board name ref
-  newBoardName.value = "";
+  createBoardName.value = "";
 
   // Update the list of boards to include the newly created board
   getBoards();
@@ -282,7 +296,7 @@ async function createBoard(close: () => void): Promise<void> {
 // If the create board modal was closed using the cancel button, reset the modal refs
 async function cancelCreateBoard(close: () => void): Promise<void> {
   boardNameError.value = "";
-  newBoardName.value = "";
+  createBoardName.value = "";
 
   // Close the modal
   close();
@@ -347,6 +361,85 @@ async function getBoards(): Promise<void> {
   }
 }
 
+// If a new name for a board was submitted, validate the name and rename the board
+async function renameBoard(close: () => void): Promise<void> {
+  if (!selectedBoard.value) {
+    return;
+  }
+
+  // If the new name is not long enough, say so and stop
+  if (!renameBoardName.value || renameBoardName.value.length < 3) {
+    renameboardError.value = "Board name is too short!";
+    return;
+  }
+
+  // If the new name is valid, reset the error message
+  renameboardError.value = "";
+
+  // console.log("Rename board " + selectedBoard.value.name + " to " + renameBoardName.value);
+
+  // Update the board's name
+  const { error } = await supabase
+    .from("boards")
+    .update({ name: renameBoardName.value })
+    .eq("id", selectedBoard.value.id);
+
+  if (error) {
+    console.error(error);
+    return;
+  }
+
+  // Close the modal
+  close();
+
+  // Reset the board name ref
+  renameBoardName.value = "";
+
+  // Update the list of boards to include board's new name
+  getBoards();
+
+  // Unselect the board
+  selectedBoard.value = undefined;
+}
+
+// If the rename board modal was closed using the cancel button, reset the modal refs
+async function cancelRenameBoard(close: () => void): Promise<void> {
+  renameboardError.value = "";
+  renameBoardName.value = "";
+
+  // Close the modal
+  close();
+
+  // Unselect the board
+  selectedBoard.value = undefined;
+}
+
+// Delete the currently selected board
+async function deleteBoard(close: () => void): Promise<void> {
+  if (!selectedBoard.value) {
+    return;
+  }
+
+  // console.log("Delete board " + selectedBoard.value.name);
+
+  // Delete the board
+  const { error } = await supabase.from("boards").delete().eq("id", selectedBoard.value.id);
+
+  if (error) {
+    console.error(error);
+    return;
+  }
+
+  // Close the modal
+  close();
+
+  // Update the list of boards to remove the deleted board from the list
+  getBoards();
+
+  // Unselect the board
+  selectedBoard.value = undefined;
+}
+
 // Send the user to the page for this board (open the board)
 function onSelectBoard(row: Row<Board>) {
   router.push(ROUTES.BOARD(row.original.id));
@@ -356,7 +449,15 @@ function onSelectBoard(row: Row<Board>) {
 watch(createBoardModalOpen, (newValue) => {
   if (!newValue) {
     boardNameError.value = "";
-    newBoardName.value = "";
+    createBoardName.value = "";
+  }
+});
+
+// If the rename board modal was closed using the modal's own close button, reset the modal refs
+watch(renameBoardModalOpen, (newValue) => {
+  if (!newValue) {
+    renameboardError.value = "";
+    renameBoardName.value = "";
   }
 });
 
@@ -386,6 +487,7 @@ onMounted(() => {
     <div class="table-header">
       <UModal
         title="Create a New Board"
+        description="Create a new Board with the following name."
         v-model:open="createBoardModalOpen"
         :close="{ class: 'create-board-modal-close-button' }"
       >
@@ -396,7 +498,7 @@ onMounted(() => {
         />
         <template #body="{ close }">
           <div class="mb-6 w-full">
-            <UInput v-model="newBoardName" placeholder="Board name" />
+            <UInput v-model="createBoardName" placeholder="Board name" />
             <div v-if="boardNameError" class="mt-2 text-sm text-error">
               {{ boardNameError }}
             </div>
@@ -428,6 +530,50 @@ onMounted(() => {
       }"
     />
   </div>
+  <UModal
+    title="Rename Board"
+    description="Change this Board's name."
+    v-model:open="renameBoardModalOpen"
+    :close="{ class: 'create-board-modal-close-button' }"
+  >
+    <template #body="{ close }">
+      <div class="mb-6 w-full">
+        <UInput v-model="renameBoardName" :placeholder="renameBoardPlaceholder" />
+        <div v-if="renameboardError" class="mt-2 text-sm text-error">
+          {{ renameboardError }}
+        </div>
+      </div>
+      <div class="create-board-modal-buttons">
+        <UButton class="create-board-button" label="Rename Board" @click="renameBoard(close)" />
+        <UButton
+          color="neutral"
+          variant="outline"
+          label="Cancel"
+          class="create-board-modal-cancel-button"
+          @click="cancelRenameBoard(close)"
+        />
+      </div>
+    </template>
+  </UModal>
+  <UModal
+    title="Delete Board"
+    description="This action cannot be reversed. All data within this Board will be deleted, and all users will lose access to it. Are you sure you want to delete this Board?"
+    v-model:open="deleteBoardModalOpen"
+    :close="{ class: 'create-board-modal-close-button' }"
+  >
+    <template #body="{ close }">
+      <div class="create-board-modal-buttons">
+        <UButton color="error" label="Delete" class="delete-button" @click="deleteBoard(close)" />
+        <UButton
+          color="neutral"
+          variant="outline"
+          label="Cancel"
+          class="create-board-modal-cancel-button"
+          @click="close"
+        />
+      </div>
+    </template>
+  </UModal>
 </template>
 
 <style>
