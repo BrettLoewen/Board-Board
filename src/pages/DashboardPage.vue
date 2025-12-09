@@ -2,9 +2,9 @@
 import { h, onMounted, ref, resolveComponent, watch } from "vue";
 import { ROUTES } from "@/constants";
 import { useAuthStore } from "@/stores/auth";
-import type { DropdownMenuItem, TableColumn } from "@nuxt/ui";
-import type { Column } from "@tanstack/vue-table";
 import { supabase } from "@/lib/supabaseClient";
+import type { DropdownMenuItem, TableColumn } from "@nuxt/ui";
+import type { Column, Row } from "@tanstack/vue-table";
 
 type Board = {
   name: string;
@@ -14,6 +14,7 @@ type Board = {
 };
 
 const UButton = resolveComponent("UButton"); // Used to create and define a UButton in code in the table's header
+const UDropdownMenu = resolveComponent("UDropdownMenu"); // Used to create and define a UDropdownMenu in code in the table
 
 const auth = useAuthStore();
 
@@ -23,6 +24,14 @@ const sorting = ref([]);
 
 // Used to filter out rows based on the stored text.
 const globalFilter = ref("");
+
+// The data used by the board table (replace with data from supabase later)
+const boards = ref<Board[]>([]);
+
+// Refs for tracking and displaying data in the create board modal
+const newBoardName = ref("");
+const boardNameError = ref("");
+const createBoardModalOpen = ref(false);
 
 // Defines what is included in the navbar's user dropdown
 const items = ref<DropdownMenuItem[][]>([
@@ -50,7 +59,7 @@ const items = ref<DropdownMenuItem[][]>([
       // Sign out the user (which will send the user back to the welcome page)
       label: "Logout",
       icon: "i-lucide-log-out",
-      class: "logout",
+      class: "dropdown-hover",
       onSelect() {
         console.log("Logout");
         auth.logout();
@@ -59,18 +68,28 @@ const items = ref<DropdownMenuItem[][]>([
   ],
 ]);
 
-// The data used by the board table (replace with data from supabase later)
-const boards = ref<Board[]>([]);
-
 // Link the column data to a column in the table and format the data as necessary
+// The meta classes ensure the columns are the same width (and that the extra columns for sharing and actions are smaller)
 const columns: TableColumn<Board>[] = [
   {
     accessorKey: "name",
     header: ({ column }) => getHeader(column, "Name"),
+    meta: {
+      class: {
+        th: "w-50",
+        td: "w-50",
+      },
+    },
   },
   {
     accessorKey: "ownedBy",
     header: ({ column }) => getHeader(column, "Owned By"),
+    meta: {
+      class: {
+        th: "w-50",
+        td: "w-50",
+      },
+    },
   },
   {
     accessorKey: "createdAt",
@@ -84,6 +103,12 @@ const columns: TableColumn<Board>[] = [
         hour12: true,
       });
     },
+    meta: {
+      class: {
+        th: "w-50",
+        td: "w-50",
+      },
+    },
   },
   {
     accessorKey: "updatedAt",
@@ -96,6 +121,69 @@ const columns: TableColumn<Board>[] = [
         minute: "2-digit",
         hour12: true,
       });
+    },
+    meta: {
+      class: {
+        th: "w-50",
+        td: "w-50",
+      },
+    },
+  },
+  {
+    id: "share",
+    cell: ({ row: boardRow }) => {
+      return h(
+        UButton,
+        {
+          class: "create-board-button",
+          icon: "i-fluent-share-16-regular",
+          onClick: () => console.log("Share " + boardRow.original.name),
+        },
+        () => {
+          return "Share";
+        },
+      );
+    },
+    meta: {
+      class: {
+        th: "w-30",
+        td: "w-30",
+      },
+    },
+  },
+  {
+    id: "actions",
+    cell: ({ row: boardRow }) => {
+      // Keeps the button pinned to the right side of its column (and therefore to the right side of the table)
+      return h(
+        "div",
+        { class: "text-right" },
+        // Define a dropdown that gets its items from getBoardItems() and is triggered by the contained h(UButton)
+        h(
+          UDropdownMenu,
+          {
+            content: {
+              align: "end",
+            },
+            items: getBoardItems(boardRow),
+            "aria-label": "Actions dropdown",
+          },
+          () =>
+            h(UButton, {
+              icon: "i-lucide-ellipsis-vertical",
+              color: "neutral",
+              variant: "ghost",
+              class: "ml-auto dropdown-hover",
+              "aria-label": "Actions dropdown",
+            }),
+        ),
+      );
+    },
+    meta: {
+      class: {
+        th: "w-10",
+        td: "w-10",
+      },
     },
   },
 ];
@@ -127,18 +215,34 @@ function getHeader(column: Column<Board>, label: string) {
   });
 }
 
-// Refs for tracking and displaying data in the create board modal
-const newBoardName = ref("");
-const boardNameError = ref("");
-const createBoardModalOpen = ref(false);
-
-// If the create board modal was closed using the modal's own close button, reset the modal refs
-watch(createBoardModalOpen, (newValue) => {
-  if (!newValue) {
-    boardNameError.value = "";
-    newBoardName.value = "";
-  }
-});
+function getBoardItems(boardRow: Row<Board>) {
+  return [
+    [
+      {
+        type: "label",
+        label: boardRow.original.name,
+      },
+    ],
+    [
+      {
+        label: "Rename",
+        icon: "i-fluent-edit-16-regular",
+        class: "dropdown-hover",
+        onSelect() {
+          console.log("Rename board");
+        },
+      },
+      {
+        label: "Delete",
+        icon: "i-fluent-delete-16-regular",
+        class: "dropdown-hover",
+        onSelect() {
+          console.log("Delete board");
+        },
+      },
+    ],
+  ];
+}
 
 // If a new board was submitted for creation, validate the name and then create the board
 async function createBoard(close: () => void): Promise<void> {
@@ -240,6 +344,14 @@ async function getBoards(): Promise<void> {
   }
 }
 
+// If the create board modal was closed using the modal's own close button, reset the modal refs
+watch(createBoardModalOpen, (newValue) => {
+  if (!newValue) {
+    boardNameError.value = "";
+    newBoardName.value = "";
+  }
+});
+
 onMounted(() => {
   getBoards();
 });
@@ -326,7 +438,7 @@ onMounted(() => {
   background-color: var(--color-primary-800);
 }
 
-.logout:hover {
+.dropdown-hover:hover {
   cursor: pointer;
 }
 
