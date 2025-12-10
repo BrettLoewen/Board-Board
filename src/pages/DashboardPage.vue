@@ -11,6 +11,7 @@ type Board = {
   id: string;
   name: string;
   ownedBy: string;
+  ownerId: string;
   createdAt: string;
   updatedAt: string;
 };
@@ -56,6 +57,9 @@ const shareBoardModalOpen = ref(false);
 const friends = ref<Friend[]>([]);
 const friendsNotShared = ref<Friend[]>([]);
 const friendsShared = ref<Friend[]>([]);
+
+// Refs for tracking and displaying data in the leave board modal
+const leaveBoardModalOpen = ref(false);
 
 // Defines what is included in the navbar's user dropdown
 const items = ref<DropdownMenuItem[][]>([
@@ -156,6 +160,25 @@ const columns: TableColumn<Board>[] = [
   {
     id: "share",
     cell: ({ row: boardRow }) => {
+      // If this user does not own this board (it was shared to them), display a button to stop receiving the shared board
+      if (boardRow.original.ownerId !== auth?.user?.id) {
+        return h(
+          UButton,
+          {
+            class: "share-board-modal-error-button",
+            variant: "subtle",
+            color: "error",
+            icon: "i-carbon-close-outline",
+            onClick: () => {
+              leaveBoardModalOpen.value = true;
+              selectedBoard.value = boardRow.original;
+            },
+          },
+          () => "Leave Board",
+        );
+      }
+
+      // Otherwise, the user does own the board, so display a button to share it to others
       return h(
         UButton,
         {
@@ -167,9 +190,7 @@ const columns: TableColumn<Board>[] = [
             selectedBoard.value = boardRow.original;
           },
         },
-        () => {
-          return "Share";
-        },
+        () => "Share",
       );
     },
     meta: {
@@ -182,17 +203,19 @@ const columns: TableColumn<Board>[] = [
   {
     id: "actions",
     cell: ({ row: boardRow }) => {
-      // Keeps the button pinned to the right side of its column (and therefore to the right side of the table)
+      // If this user does not own this board (it was shared to them), do not display the action menu
+      if (boardRow.original.ownerId !== auth?.user?.id) {
+        return h("div");
+      }
+
+      // Otherwise, the user does own the board, so display the action dropdown button
       return h(
         "div",
         { class: "text-right" },
-        // Define a dropdown that gets its items from getBoardItems() and is triggered by the contained h(UButton)
         h(
           UDropdownMenu,
           {
-            content: {
-              align: "end",
-            },
+            content: { align: "end" },
             items: getBoardItems(boardRow),
             "aria-label": "Actions dropdown",
           },
@@ -342,8 +365,8 @@ async function getBoards(): Promise<void> {
     return;
   }
 
-  console.log(boardsData);
-  console.log(sharedBoardsData);
+  // console.log(boardsData);
+  // console.log(sharedBoardsData);
 
   // Clear the list of boards
   boards.value = [];
@@ -356,6 +379,7 @@ async function getBoards(): Promise<void> {
         id: board.id,
         name: board.name ?? "",
         ownedBy: "You",
+        ownerId: board.owner_id,
         createdAt: new Date(board.created_at ?? "")
           .toLocaleString("en-US", {
             day: "numeric",
@@ -386,6 +410,7 @@ async function getBoards(): Promise<void> {
         id: sharedBoard.board_id,
         name: sharedBoard.board.name ?? "",
         ownedBy: sharedBoard.board.owner.username ?? "",
+        ownerId: sharedBoard.board.owner_id,
         createdAt: new Date(sharedBoard.board.created_at ?? "")
           .toLocaleString("en-US", {
             day: "numeric",
@@ -606,12 +631,12 @@ async function getFriendsSharedToBoard(boardId: string): Promise<void> {
 }
 
 // Share the currently selected board to the given friend
-async function shareBoard(close: () => void, friendId: string): Promise<void> {
+async function shareBoard(friendId: string): Promise<void> {
   if (!selectedBoard.value) {
     return;
   }
 
-  console.log("Share board " + selectedBoard.value.name + " to " + friendId);
+  // console.log("Share board " + selectedBoard.value.name + " to " + friendId);
 
   // Share the currently selected board to the given user
   const { error } = await supabase
@@ -623,23 +648,59 @@ async function shareBoard(close: () => void, friendId: string): Promise<void> {
     return;
   }
 
-  // Close the modal
-  close();
-
-  // Unselect the board
-  selectedBoard.value = undefined;
+  // Refresh the data used by the share board modal
+  await getFriendsSharedToBoard(selectedBoard.value.id);
 }
 
 // Stop sharing the currently selected board to the given friend
-async function unshareBoard(close: () => void, friend: string): Promise<void> {
+async function unshareBoard(friendId: string): Promise<void> {
   if (!selectedBoard.value) {
     return;
   }
 
-  console.log("Unshare board " + selectedBoard.value.name + " to " + friend);
+  // console.log("Unshare board " + selectedBoard.value.name + " to " + friendId);
+
+  // Delete the shared_boards row, thereby unsharing the board
+  const { error } = await supabase
+    .from("shared_boards")
+    .delete()
+    .eq("board_id", selectedBoard.value.id)
+    .eq("shared_to_id", friendId);
+
+  if (error) {
+    console.error(error);
+    return;
+  }
+
+  // Refresh the data used by the share board modal
+  await getFriendsSharedToBoard(selectedBoard.value.id);
+}
+
+// Stop sharing the currently selected board to the given friend
+async function leaveBoard(close: () => void): Promise<void> {
+  if (!selectedBoard.value) {
+    return;
+  }
+
+  // console.log("Leave board " + selectedBoard.value.name);
+
+  // Delete the shared_boards row, thereby leaving the board (unsharing the board with yourself)
+  const { error } = await supabase
+    .from("shared_boards")
+    .delete()
+    .eq("board_id", selectedBoard.value.id)
+    .eq("shared_to_id", auth?.user?.id ?? "");
+
+  if (error) {
+    console.error(error);
+    return;
+  }
 
   // Close the modal
   close();
+
+  // Update the list of boards to remove the unshared board from the list
+  getBoards();
 
   // Unselect the board
   selectedBoard.value = undefined;
@@ -781,12 +842,36 @@ onMounted(() => {
     </template>
   </UModal>
   <UModal
+    title="Leave Board"
+    description="You will lose access to this Board. All your data / work in the Board will remain. Are you sure you want to leave this Board?"
+    v-model:open="leaveBoardModalOpen"
+    :close="{ class: 'create-board-modal-close-button' }"
+  >
+    <template #body="{ close }">
+      <div class="create-board-modal-buttons">
+        <UButton
+          color="error"
+          label="Leave Board"
+          class="delete-button"
+          @click="leaveBoard(close)"
+        />
+        <UButton
+          color="neutral"
+          variant="outline"
+          label="Cancel"
+          class="create-board-modal-cancel-button"
+          @click="close"
+        />
+      </div>
+    </template>
+  </UModal>
+  <UModal
     title="Share Board"
     description="Share this Board to your friends to collaborate."
     v-model:open="shareBoardModalOpen"
     :close="{ class: 'create-board-modal-close-button' }"
   >
-    <template #body="{ close }">
+    <template #body>
       <p
         v-if="(!friends || friends.length === 0) && (!friendsShared || friendsShared.length === 0)"
         class="mb-6 text-center text-error"
@@ -806,7 +891,7 @@ onMounted(() => {
               variant="subtle"
               icon="i-fluent-share-16-regular"
               label="Share"
-              @click="shareBoard(close, friend.id)"
+              @click="shareBoard(friend.id)"
             />
           </div>
         </div>
@@ -821,12 +906,12 @@ onMounted(() => {
           >
             <p class="content-center">{{ friendShare.name }}</p>
             <UButton
-              class="create-board-button"
+              class="share-board-modal-error-button"
               variant="subtle"
               icon="i-carbon-close-outline"
               color="error"
               label="Unshare"
-              @click="unshareBoard(close, friendShare.id)"
+              @click="unshareBoard(friendShare.id)"
             />
           </div>
         </div>
@@ -926,5 +1011,12 @@ onMounted(() => {
   flex-direction: row;
   justify-content: space-between;
   padding: 10px;
+}
+
+.share-board-modal-error-button:active {
+  background-color: var(--color-error-800);
+}
+.share-board-modal-error-button:hover {
+  cursor: pointer;
 }
 </style>
