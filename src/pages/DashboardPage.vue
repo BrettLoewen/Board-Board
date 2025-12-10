@@ -54,6 +54,7 @@ const deleteBoardModalOpen = ref(false);
 // Refs for tracking and displaying data in the share board modal
 const shareBoardModalOpen = ref(false);
 const friends = ref<Friend[]>([]);
+const friendsNotShared = ref<Friend[]>([]);
 const friendsShared = ref<Friend[]>([]);
 
 // Defines what is included in the navbar's user dropdown
@@ -161,6 +162,7 @@ const columns: TableColumn<Board>[] = [
           class: "create-board-button",
           icon: "i-fluent-share-16-regular",
           onClick: () => {
+            getFriendsSharedToBoard(boardRow.original.id);
             shareBoardModalOpen.value = true;
             selectedBoard.value = boardRow.original;
           },
@@ -378,7 +380,7 @@ async function getBoards(): Promise<void> {
 
   if (sharedBoardsData) {
     // Loop through each row of the data (board that was shared to the user)
-    sharedBoardsData.forEach(async (sharedBoard) => {
+    sharedBoardsData.forEach((sharedBoard) => {
       // Get the data from the board and format it as needed
       boards.value.push({
         id: sharedBoard.board_id,
@@ -550,6 +552,55 @@ async function getFriends(): Promise<void> {
           });
         }
       }
+    });
+  }
+}
+
+// Get the friends this board has been shared to.
+// Also get the friends this board has not been shared to yet.
+async function getFriendsSharedToBoard(boardId: string): Promise<void> {
+  // Get all the users that the given board was shared to
+  const { data, error } = await supabase
+    .from("shared_boards")
+    .select("*, friend:user_profiles(*)")
+    .eq("board_id", boardId);
+
+  if (error) {
+    console.error(error);
+    return;
+  }
+
+  // Store the friends that the given board has been shared to
+  if (data) {
+    // Clear any old data
+    friendsShared.value = [];
+
+    // Loop through each row of the data
+    data.forEach((sharedBoard) => {
+      // Add each friend that this board was shared with to the array
+      friendsShared.value.push({
+        id: sharedBoard.friend.id ?? "",
+        name: sharedBoard.friend.username ?? "",
+      });
+    });
+  }
+
+  // Store the friends that the given board has not been shared to
+  if (friendsShared.value) {
+    // Filter out friends that the board has been shared to
+    friendsNotShared.value = friends.value.filter((friend) => {
+      let friendHasBeenSharedTo = false;
+
+      // Loop through every friend that the board has been shared to
+      friendsShared.value.forEach((friendShared) => {
+        // If the friends match (if the board has been shared to this friend), record that
+        if (friendShared.id === friend.id && friendShared.name === friend.name) {
+          friendHasBeenSharedTo = true;
+        }
+      });
+
+      // If this friend has been shared to, filter it out (return false for this friend, otherwise return true)
+      return !friendHasBeenSharedTo;
     });
   }
 }
@@ -743,9 +794,9 @@ onMounted(() => {
         Without friends, you cannot share Boards to anyone.
       </p>
       <div class="flex flex-row w-full justify-between">
-        <div v-if="friends && friends.length > 0" class="share-list">
+        <div v-if="friendsNotShared && friendsNotShared.length > 0" class="share-list">
           <div
-            v-for="friend in friends"
+            v-for="friend in friendsNotShared"
             :key="friend.id"
             class="friend-div rounded-md border-0 ring ring-inset ring-accented"
           >
@@ -760,7 +811,7 @@ onMounted(() => {
           </div>
         </div>
         <div v-else class="share-list">
-          <p class="text-sm text-center text-muted">No Friends</p>
+          <p class="text-sm text-center text-muted">No friends to share with</p>
         </div>
         <div v-if="friendsShared && friendsShared.length > 0" class="share-list">
           <div
@@ -780,7 +831,7 @@ onMounted(() => {
           </div>
         </div>
         <div v-else class="share-list">
-          <p class="text-sm text-center text-muted">No Shared Friends</p>
+          <p class="text-sm text-center text-muted">No friends have been shared to</p>
         </div>
       </div>
     </template>
