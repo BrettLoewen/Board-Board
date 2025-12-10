@@ -31,6 +31,7 @@ export const AUTH = {
 
 export const ROUTES = {
   NOT_FOUND: "/:catchAll(.*)",
+  NOT_FOUND_STRING: "/404",
   ROOT: "/",
   EMAIL: "/email",
   DASHBOARD: "/dashboard",

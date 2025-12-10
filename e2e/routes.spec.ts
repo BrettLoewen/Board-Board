@@ -25,7 +25,16 @@ test.describe("Unauthenticated Routes", () => {
     // Go to the dashboard without logging in
     await page.goto("http://localhost:5173/Board-Board/dashboard");
 
-    // Verify that the user was returned to the welcome page
+    // Verify that the user was redirected to the 404 page
+    const errorMessage = page.locator("h1", { hasText: "404 Error" });
+    await expect(errorMessage).toHaveCount(1);
+
+    // Return to the welcome page
+    const homeButton = page.locator("button", { hasText: "Back to Home" });
+    await expect(homeButton).toHaveCount(1);
+    homeButton.click();
+
+    // Verify the contents of the welcome page
     const welcomeNotice = page.locator("h1", { hasText: "Welcome to Board Board!" });
     await expect(welcomeNotice).toHaveCount(1);
   });
@@ -34,7 +43,16 @@ test.describe("Unauthenticated Routes", () => {
     // Go to the settings page without logging in
     await page.goto("http://localhost:5173/Board-Board/dashboard/settings");
 
-    // Verify that the user was returned to the welcome page
+    // Verify that the user was redirected to the 404 page
+    const errorMessage = page.locator("h1", { hasText: "404 Error" });
+    await expect(errorMessage).toHaveCount(1);
+
+    // Return to the welcome page
+    const homeButton = page.locator("button", { hasText: "Back to Home" });
+    await expect(homeButton).toHaveCount(1);
+    homeButton.click();
+
+    // Verify the contents of the welcome page
     const welcomeNotice = page.locator("h1", { hasText: "Welcome to Board Board!" });
     await expect(welcomeNotice).toHaveCount(1);
   });
@@ -43,7 +61,16 @@ test.describe("Unauthenticated Routes", () => {
     // Go to the friends page without logging in
     await page.goto("http://localhost:5173/Board-Board/dashboard/friends");
 
-    // Verify that the user was returned to the welcome page
+    // Verify that the user was redirected to the 404 page
+    const errorMessage = page.locator("h1", { hasText: "404 Error" });
+    await expect(errorMessage).toHaveCount(1);
+
+    // Return to the welcome page
+    const homeButton = page.locator("button", { hasText: "Back to Home" });
+    await expect(homeButton).toHaveCount(1);
+    homeButton.click();
+
+    // Verify the contents of the welcome page
     const welcomeNotice = page.locator("h1", { hasText: "Welcome to Board Board!" });
     await expect(welcomeNotice).toHaveCount(1);
   });
