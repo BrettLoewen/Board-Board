@@ -15,6 +15,11 @@ type Board = {
   updatedAt: string;
 };
 
+type Friend = {
+  id: string;
+  name: string;
+};
+
 const UButton = resolveComponent("UButton"); // Used to create and define a UButton in code in the table's header
 const UDropdownMenu = resolveComponent("UDropdownMenu"); // Used to create and define a UDropdownMenu in code in the table
 
@@ -48,8 +53,8 @@ const deleteBoardModalOpen = ref(false);
 
 // Refs for tracking and displaying data in the share board modal
 const shareBoardModalOpen = ref(false);
-const friends = ref<{ id: string; name: string }[]>([]);
-const friendsShared = ref<{ id: string; name: string }[]>([]);
+const friends = ref<Friend[]>([]);
+const friendsShared = ref<Friend[]>([]);
 
 // Defines what is included in the navbar's user dropdown
 const items = ref<DropdownMenuItem[][]>([
@@ -317,10 +322,13 @@ async function getBoards(): Promise<void> {
     .select()
     .eq("owner_id", auth.user?.id ?? "");
 
-  // Get the data for all boards that have been shared to this user
+  // Get the data for all boards that have been shared to this user.
+  // Get the shared_boards row that shares the board to the user.
+  // Get the boards row for the shared board.
+  // Get the user_profiles row of the board's owner (so their name can be displayed as the owner).
   const { data: sharedBoardsData, error: sharedBoardsError } = await supabase
     .from("shared_boards")
-    .select()
+    .select("*, board:boards(*, owner:user_profiles!boards_owner_id_fkey(*))")
     .eq("shared_to_id", auth.user?.id ?? "");
 
   if (boardsError) {
@@ -339,7 +347,7 @@ async function getBoards(): Promise<void> {
   boards.value = [];
 
   if (boardsData) {
-    // Loop through each row of the data
+    // Loop through each row of the data (board that the user created)
     boardsData.forEach((board) => {
       // Get the data from the board and format it as needed
       boards.value.push({
@@ -356,6 +364,36 @@ async function getBoards(): Promise<void> {
           })
           .toString(),
         updatedAt: new Date(board.updated_at ?? 0)
+          .toLocaleString("en-US", {
+            day: "numeric",
+            month: "short",
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: true,
+          })
+          .toString(),
+      });
+    });
+  }
+
+  if (sharedBoardsData) {
+    // Loop through each row of the data (board that was shared to the user)
+    sharedBoardsData.forEach(async (sharedBoard) => {
+      // Get the data from the board and format it as needed
+      boards.value.push({
+        id: sharedBoard.board_id,
+        name: sharedBoard.board.name ?? "",
+        ownedBy: sharedBoard.board.owner.username ?? "",
+        createdAt: new Date(sharedBoard.board.created_at ?? "")
+          .toLocaleString("en-US", {
+            day: "numeric",
+            month: "short",
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: true,
+          })
+          .toString(),
+        updatedAt: new Date(sharedBoard.board.updated_at ?? 0)
           .toLocaleString("en-US", {
             day: "numeric",
             month: "short",
@@ -517,12 +555,22 @@ async function getFriends(): Promise<void> {
 }
 
 // Share the currently selected board to the given friend
-async function shareBoard(close: () => void, friend: string): Promise<void> {
+async function shareBoard(close: () => void, friendId: string): Promise<void> {
   if (!selectedBoard.value) {
     return;
   }
 
-  console.log("Share board " + selectedBoard.value.name + " to " + friend);
+  console.log("Share board " + selectedBoard.value.name + " to " + friendId);
+
+  // Share the currently selected board to the given user
+  const { error } = await supabase
+    .from("shared_boards")
+    .insert({ board_id: selectedBoard.value.id, shared_to_id: friendId });
+
+  if (error) {
+    console.error(error);
+    return;
+  }
 
   // Close the modal
   close();

@@ -43,7 +43,7 @@ export const useAuthStore = defineStore("auth", () => {
       }
       // If a user was signed in, get their profile data
       else {
-        console.log("sign in");
+        // console.log("sign in");
         fetchProfile().catch(console.error);
       }
     });
@@ -65,7 +65,7 @@ export const useAuthStore = defineStore("auth", () => {
 
     // Verify the data was fetched successfully
     if (error) {
-      console.error("fetchProfile error", error);
+      // console.error("fetchProfile error", error);
       profile.value = null;
       return;
     }
@@ -151,7 +151,7 @@ export const useAuthStore = defineStore("auth", () => {
     if (error) {
       console.error("Failed to delete account:", error);
     } else {
-      console.log("Account deleted successfully. Logging user out.");
+      // console.log("Account deleted successfully. Logging user out.");
 
       // Delete the user's token from their storage to fully log out the user
       for (const key in localStorage) {
