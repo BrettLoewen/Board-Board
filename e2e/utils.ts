@@ -234,3 +234,33 @@ export async function sendFriendRequest(
   await expect(friendRequestRejectButton).toBeVisible();
   await expect(friendRequestRejectButton).toHaveCount(1);
 }
+
+export async function createBoard(page: Page, boardName: string) {
+  // Open the Create Board modal
+  const newBoardButton = page.locator("button", { hasText: "New Board" });
+  await expect(newBoardButton).toBeVisible();
+  await expect(newBoardButton).toHaveCount(1);
+  await newBoardButton.click();
+
+  // Verify the Create Board modal was opened
+  const createBoardModalHeader = page.locator("h2", { hasText: "Create a New Board" });
+  await expect(createBoardModalHeader).toHaveCount(1);
+
+  // Fill in the board's name
+  const boardNameInput = page.locator('input[placeholder="Board name"]');
+  await boardNameInput.fill(boardName);
+
+  // Create the Board
+  const createBoardButton = page.locator("button", { hasText: "Create Board" });
+  await expect(createBoardButton).toBeVisible();
+  await expect(createBoardButton).toHaveCount(1);
+  await createBoardButton.click();
+
+  // Verify the modal window was closed
+  await expect(createBoardButton).not.toBeVisible();
+
+  // Verify the new board was created and appears in the list of boards
+  const boardRowButton = page.locator("tr", { hasText: boardName });
+  await expect(boardRowButton).toBeVisible();
+  await expect(boardRowButton).toHaveCount(1);
+}

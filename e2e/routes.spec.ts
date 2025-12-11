@@ -75,6 +75,13 @@ test.describe("Unauthenticated Routes", () => {
     await expect(welcomeNotice).toHaveCount(1);
   });
 
+  test("/board/<id> route is protected", async ({ page }) => {
+    // Go to the friends page without logging in
+    await page.goto("http://localhost:5173/Board-Board/dashboard/friends");
+
+    await expect(true).toBe(false);
+  });
+
   test("/email route works", async ({ page }) => {
     // Go to a non-existant page
     await page.goto("http://localhost:5173/Board-Board/email");
@@ -178,5 +185,26 @@ test.describe("Authenticated Routes", () => {
 
     // Verify that the dashboard was returned to
     await verifyDashboardReached(page);
+  });
+
+  test("Users can access boards they created", async ({ page }) => {
+    // Sign up
+    await signUp(page, userEmail, userPassword, userName);
+
+    await expect(true).toBe(false);
+  });
+
+  test("Users can access boards that were shared with them", async ({ page }) => {
+    // Sign up
+    await signUp(page, userEmail, userPassword, userName);
+
+    await expect(true).toBe(false);
+  });
+
+  test("Users are not able to access boards they don't own or weren't shared", async ({ page }) => {
+    // Sign up
+    await signUp(page, userEmail, userPassword, userName);
+
+    await expect(true).toBe(false);
   });
 });
