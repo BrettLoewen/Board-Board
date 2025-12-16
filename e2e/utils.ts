@@ -39,7 +39,7 @@ async function startSupabase() {
   return;
 }
 
-async function isFunctionAvailable(url) {
+async function isFunctionAvailable(url: string) {
   try {
     // Try to hit the given url for an edge function.
     // If the fetch doesn't fail, then the function is running.
@@ -49,7 +49,6 @@ async function isFunctionAvailable(url) {
     // If the fetch fails, then the function is not running.
     return false;
   }
-  return false;
 }
 
 // Clear all the data so all tests are running in a known environment
@@ -104,7 +103,7 @@ export async function login(page: Page, userEmail: string, userPassword: string)
   await page.keyboard.press("Enter");
 
   // Verify the dashboard page was reached and the user is logged in.
-  await verifyDashboardReached(page);
+  await verifyDashboardReached(page, undefined);
 }
 
 export async function verifyDashboardReached(page: Page, username: string | undefined) {
