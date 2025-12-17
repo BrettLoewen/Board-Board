@@ -162,15 +162,7 @@ export async function navigateToSettingsPageFromDashboard(page: Page) {
   await expect(settingsPageHeader).toHaveCount(1);
 }
 
-export async function signUpToFriendsPage(
-  page: Page,
-  userEmail: string,
-  userPassword: string,
-  userName: string,
-) {
-  // Sign up
-  await signUp(page, userEmail, userPassword, userName);
-
+export async function goToFriendsPage(page: Page) {
   // Open the user dropdown
   const userButton = page.locator("button.navbar-right-button");
   await expect(userButton).toHaveCount(1);
@@ -185,6 +177,19 @@ export async function signUpToFriendsPage(
   // Verify that the friends page was reached
   const friendsPageHeader = page.locator("h1", { hasText: "Friends" });
   await expect(friendsPageHeader).toHaveCount(1);
+}
+
+export async function signUpToFriendsPage(
+  page: Page,
+  userEmail: string,
+  userPassword: string,
+  userName: string,
+) {
+  // Sign up
+  await signUp(page, userEmail, userPassword, userName);
+
+  // Go to the friends page
+  await goToFriendsPage(page);
 }
 
 export async function sendFriendRequest(
@@ -232,6 +237,65 @@ export async function sendFriendRequest(
   });
   await expect(friendRequestRejectButton).toBeVisible();
   await expect(friendRequestRejectButton).toHaveCount(1);
+}
+
+// Assumes both users to start on the dashboard.
+// Returns both users to the dashboard after they become friends.
+export async function sendAndAcceptFriendRequest(
+  user1Page: Page,
+  user1Name: string,
+  user2Page: Page,
+  user2Name: string,
+) {
+  // Send both users to the friends page
+  await goToFriendsPage(user1Page);
+  await goToFriendsPage(user2Page);
+
+  // Send a friend request from user2 to user1 and verify that user1 received it
+  await sendFriendRequest(user1Page, user1Name, user2Page, user2Name);
+
+  // Accept the friend request
+  const friendRequestAcceptButton = user1Page.locator("button.friend-request-primary-button", {
+    hasText: "Accept",
+  });
+  await expect(friendRequestAcceptButton).toBeVisible();
+  await expect(friendRequestAcceptButton).toHaveCount(1);
+  await friendRequestAcceptButton.click();
+
+  // Verify the request was removed
+  const friendRequestsList = user1Page.locator("p", { hasText: "No Pending Friend Requests" });
+  await expect(friendRequestsList).toBeVisible();
+  await expect(friendRequestsList).toHaveCount(1);
+
+  // Verify that user2 is displayed in user1's friends list
+  const user1FriendText = user1Page.locator("p.content-center", { hasText: user2Name });
+  await expect(user1FriendText).toBeVisible();
+  await expect(user1FriendText).toHaveCount(1);
+  const user1FriendRemoveButton = user1Page.locator("button.friend-request-error-button", {
+    hasText: "Remove",
+  });
+  await expect(user1FriendRemoveButton).toBeVisible();
+  await expect(user1FriendRemoveButton).toHaveCount(1);
+
+  // Verify that user1 is displayed in user2's friends list
+  const user2FriendText = user2Page.locator("p.content-center", { hasText: user1Name });
+  await expect(user2FriendText).toBeVisible();
+  await expect(user2FriendText).toHaveCount(1);
+  const user2FriendRemoveButton = user2Page.locator("button.friend-request-error-button", {
+    hasText: "Remove",
+  });
+  await expect(user2FriendRemoveButton).toBeVisible();
+  await expect(user2FriendRemoveButton).toHaveCount(1);
+
+  // Return both users to the dashboard
+  const user1BackButton = user1Page.locator("button.back-button");
+  await expect(user1BackButton).toBeVisible();
+  await expect(user1BackButton).toHaveCount(1);
+  await user1BackButton.click();
+  const user2BackButton = user2Page.locator("button.back-button");
+  await expect(user2BackButton).toBeVisible();
+  await expect(user2BackButton).toHaveCount(1);
+  await user2BackButton.click();
 }
 
 export async function createBoard(page: Page, boardName: string) {
