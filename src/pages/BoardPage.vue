@@ -35,12 +35,17 @@ onMounted(() => {
 
     <h1 class="navbar-board-title text-primary font-medium text-xl">{{ board?.name }}</h1>
   </UDashboardNavbar>
+
+  <BoardToolbar />
+
+  <DigitalBoard />
 </template>
 
 <style>
 .navbar-board {
   display: flex;
   justify-content: left;
+  gap: 0px;
   border-color: var(--ui-border-accented);
   box-shadow:
     0 3px 1px -2px rgba(0, 0, 0, 0.2),
