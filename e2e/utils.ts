@@ -327,3 +327,16 @@ export async function createBoard(page: Page, boardName: string) {
   await expect(boardRowButton).toBeVisible();
   await expect(boardRowButton).toHaveCount(1);
 }
+
+export async function verifyBoardPageReached(page: Page, boardName: string) {
+  // Verify the url is for a board page (/board/<board id>)
+  await expect(page).toHaveURL(
+    /\/board\/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/,
+  );
+
+  // Verify the board's name is displayed in the board page's navbar
+  const boardTitle = page.locator("h1.navbar-board-title");
+  await expect(boardTitle).toBeVisible();
+  await expect(boardTitle).toHaveCount(1);
+  await expect(boardTitle).toHaveText(boardName);
+}

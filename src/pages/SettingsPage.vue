@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from "vue";
+import { computed, onMounted, reactive, ref, useTemplateRef } from "vue";
 import { useColorMode } from "@vueuse/core";
 import { ROUTES } from "@/constants";
 import router from "@/router";
@@ -17,6 +17,12 @@ const state = reactive({
 });
 // Store whether there are differences between the settings form's fields and the user's stored data
 const changesMade = ref<boolean>(false);
+
+// Store whether the settings form is currently validating and saving a submission.
+// The form flags changes during validation and clears them once the save finishes, so the back button is disabled
+// while saving to prevent it from opening the unsaved changes modal just before that modal is removed.
+const settingsForm = useTemplateRef<{ loading: boolean }>("settingsForm");
+const saving = computed<boolean>(() => settingsForm.value?.loading ?? false);
 
 // Define the options for the color mode select dropdown
 const colorModeItems = ref<SelectItem[]>([
@@ -190,6 +196,7 @@ onMounted(async () => {
     variant="ghost"
     color="neutral"
     size="xs"
+    :disabled="saving"
     @click="toDashboardPage"
   >
     <template #leading>
@@ -202,7 +209,7 @@ onMounted(async () => {
     description="You have unsaved changes to your settings. Are you sure you want to revert to your last saved settings?"
     :close="{ class: 'modal-close-button' }"
   >
-    <UButton class="back-button" variant="ghost" color="neutral" size="xs">
+    <UButton class="back-button" variant="ghost" color="neutral" size="xs" :disabled="saving">
       <template #leading>
         <UIcon name="i-ion-arrow-back-circle-outline" class="w-10 h-10" />
       </template>
@@ -230,7 +237,13 @@ onMounted(async () => {
   <div class="center">
     <h1>Settings</h1>
 
-    <UForm :validate="validate" :state="state" class="settings-form" @submit="submit">
+    <UForm
+      ref="settingsForm"
+      :validate="validate"
+      :state="state"
+      class="settings-form"
+      @submit="submit"
+    >
       <UFormField label="Change Username" name="username">
         <UInput
           :placeholder="auth.profile ? auth.profile.username : 'Username'"
@@ -249,7 +262,7 @@ onMounted(async () => {
         />
       </UFormField>
       <div class="horizontal-layout">
-        <UButton type="submit" class="save-button">Save Changes</UButton>
+        <UButton type="submit" class="save-button" loading-auto>Save Changes</UButton>
         <UButton
           :disabled="!changesMade"
           :variant="changesMade ? 'outline' : 'soft'"

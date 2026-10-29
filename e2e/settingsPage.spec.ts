@@ -45,6 +45,8 @@ test.describe("Settings Page", () => {
     await expect(saveButton).toBeVisible();
     await expect(saveButton).toHaveCount(1);
     await saveButton.click();
+    // Wait for the save to finish (the save button is disabled while the form is saving)
+    await expect(saveButton).toBeEnabled();
 
     // Return to the dashboard
     const backButton = page.locator("button.back-button");
@@ -124,6 +126,8 @@ test.describe("Settings Page", () => {
     await expect(saveButton).toBeVisible();
     await expect(saveButton).toHaveCount(1);
     await saveButton.click();
+    // Wait for the save to finish (the save button is disabled while the form is saving)
+    await expect(saveButton).toBeEnabled();
 
     // Return to the dashboard
     const backButton = page.locator("button.back-button");
@@ -384,6 +388,8 @@ test.describe("Settings Page", () => {
     await expect(saveButton).toBeVisible();
     await expect(saveButton).toHaveCount(1);
     await saveButton.click();
+    // Wait for the save to finish (the save button is disabled while the form is saving)
+    await expect(saveButton).toBeEnabled();
 
     // Return to the dashboard
     const backButton = page.locator("button.back-button");
@@ -448,6 +454,8 @@ test.describe("Settings Page", () => {
     await expect(saveButton).toBeVisible();
     await expect(saveButton).toHaveCount(1);
     await saveButton.click();
+    // Wait for the save to finish (the save button is disabled while the form is saving)
+    await expect(saveButton).toBeEnabled();
 
     // Return to the dashboard
     const backButton = page.locator("button.back-button");
@@ -549,6 +557,8 @@ test.describe("Settings Page", () => {
     await expect(saveButton).toBeVisible();
     await expect(saveButton).toHaveCount(1);
     await saveButton.click();
+    // Wait for the save to finish (the save button is disabled while the form is saving)
+    await expect(saveButton).toBeEnabled();
 
     // Expect the undo button to be enabled because the change wasn't saved (so it wasn't cleared)
     const undoButton = page.locator("button", { hasText: "Undo Changes" });
