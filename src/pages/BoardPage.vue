@@ -1,47 +1,46 @@
 <script setup lang="ts">
-import { supabase } from "@/lib/supabaseClient";
-import type { Tables } from "@/types/database.types";
-import { onMounted, ref } from "vue";
+import { onMounted, onUnmounted } from "vue";
 import { useRoute } from "vue-router";
+import { useBoardStore } from "@/stores/board";
 
 const route = useRoute();
+const board = useBoardStore();
 
-const board = ref<Tables<"boards">>();
-
-async function getBoard(): Promise<void> {
+onMounted(() => {
   // Get the board's id out of the url (out of the route)
   const routeId = (Array.isArray(route.params.id) ? route.params.id[0] : route.params.id) ?? "";
 
-  // Get the data about this board
-  const { data, error } = await supabase.from("boards").select().eq("id", routeId).limit(1);
+  // Load the board and its cards into the board store
+  board.load(routeId);
+});
 
-  if (error) {
-    console.error(error);
-    return;
-  }
-
-  // Store the data
-  board.value = data[0];
-}
-
-onMounted(() => {
-  getBoard();
+// The board store only ever holds the open board, so clear it when the board is closed
+onUnmounted(() => {
+  board.reset();
 });
 </script>
 
 <template>
-  <UDashboardNavbar class="navbar-board">
-    <ULink to="/dashboard" as="button" class="text-primary font-medium text-xl">Dashboard</ULink>
+  <div class="board-page">
+    <UDashboardNavbar class="navbar-board">
+      <ULink to="/dashboard" as="button" class="text-primary font-medium text-xl">Dashboard</ULink>
 
-    <h1 class="navbar-board-title text-primary font-medium text-xl">{{ board?.name }}</h1>
-  </UDashboardNavbar>
+      <h1 class="navbar-board-title text-primary font-medium text-xl">{{ board.board?.name }}</h1>
+    </UDashboardNavbar>
 
-  <BoardToolbar />
+    <BoardToolbar />
 
-  <DigitalBoard />
+    <DigitalBoard />
+  </div>
 </template>
 
 <style>
+.board-page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
 .navbar-board {
   display: flex;
   justify-content: left;

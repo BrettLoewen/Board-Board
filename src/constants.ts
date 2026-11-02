@@ -71,6 +71,22 @@ export const REALTIME = {
   },
 };
 
+export const BOARD = {
+  // The default size of a newly created card (in world units)
+  CARD_DEFAULT_SIZE: { width: 200, height: 200 },
+  // The smallest size a card can be resized to (in world units)
+  CARD_MIN_SIZE: { width: 50, height: 50 },
+  // Card positions and sizes are clamped to this on the client.
+  // Matches the `sane_geometry` check on the cards table so local and database state can't differ.
+  MAX_COORDINATE: 99999,
+  // If a card's top-left corner is within this distance of where a new card would go,
+  // the new card is offset diagonally by this amount so repeated clicks don't stack cards exactly
+  CREATE_OFFSET: 20,
+  // How often (ms) a card's geometry is written to the database while it is being dragged or resized.
+  // A final write is always made when the interaction ends.
+  GEOMETRY_WRITE_INTERVAL: 500,
+};
+
 export const FRIEND_REQUEST_ERRORS = {
   MAP: friendRequestErrorMessageMap,
   DEFAULT: "Invalid Friend Code!",

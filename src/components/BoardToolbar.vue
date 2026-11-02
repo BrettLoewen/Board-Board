@@ -1,8 +1,15 @@
-<script setup lang="ts"></script>
+<script setup lang="ts">
+import { useBoardStore } from "@/stores/board";
+
+const board = useBoardStore();
+</script>
 
 <template>
   <div class="toolbar flex flex-col">
-    <UButton class="toolbar-button flex flex-col gap-0">
+    <UButton
+      class="toolbar-button toolbar-note-button flex flex-col gap-0"
+      @click="board.createCard()"
+    >
       <UIcon name="i-ph-note" class="size-14" />
       <p>Note</p>
     </UButton>
@@ -20,6 +27,8 @@
   position: absolute;
   top: 50%;
   transform: translateY(-50%);
+  /* Sit above the board viewport, which comes later in the page */
+  z-index: 10;
   margin: 15px;
   padding: 15px;
   gap: 15px;
