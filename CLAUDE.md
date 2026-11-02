@@ -26,7 +26,7 @@ There are no unit tests. Testing is Playwright e2e only, in `e2e/`.
 - `supabase start` runs the local stack: API on 54321, Postgres on 54322, Studio on 54323, Inbucket on 54324. `.env` points the app at it, and `.env.production` points it at the hosted project.
 - `supabase functions serve delete-user` serves the account-deletion Edge Function locally.
 - `supabase migration new <name>` adds a migration, and `supabase db reset` re-applies all of them.
-- Regenerate types after schema changes with `supabase gen types typescript --local > src/types/database.types.ts`. The Supabase client is typed with `Database`, so stale types cause type-check failures.
+- Regenerate types after schema changes with `npm run gen-types`. Use the script rather than redirecting `supabase gen types` yourself: Windows PowerShell 5.1's `>` writes UTF-16, which git treats as binary and ESLint can't parse. npm runs the script through cmd.exe, whose `>` keeps the output as UTF-8. The Supabase client is typed with `Database`, so stale types cause type-check failures.
 
 ### How the e2e tests use the backend
 
