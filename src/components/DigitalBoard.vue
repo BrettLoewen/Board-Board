@@ -30,6 +30,10 @@ function onPointerDown(event: PointerEvent): void {
   const isMiddle = event.button === 1;
   const isLeftOnEmptyBoard =
     event.button === 0 && !(event.target as Element).closest(".board-card");
+
+  // Clicking empty board deselects (and stops editing)
+  if (isLeftOnEmptyBoard) board.select(null);
+
   if (!isMiddle && !isLeftOnEmptyBoard) return;
 
   // Keep receiving the pointer's events even if it leaves the viewport
@@ -72,6 +76,21 @@ function onWheel(event: WheelEvent): void {
   );
 }
 
+// Delete or Backspace deletes the selected card, and Escape deselects it.
+// Ignored while typing anywhere (a note being edited, the zoom field, a dialog).
+function onKeyDown(event: KeyboardEvent): void {
+  const target = event.target as HTMLElement;
+  if (target.closest("input, textarea, [contenteditable]")) return;
+  if (!board.selectedCardId) return;
+
+  if (event.key === "Delete" || event.key === "Backspace") {
+    event.preventDefault();
+    board.deleteCard(board.selectedCardId);
+  } else if (event.key === "Escape") {
+    board.select(null);
+  }
+}
+
 // Fit the board to the screen once, when both the cards and the viewport's size are known
 const stopInitialFit = watch(
   () => board.loaded && board.viewport.w > 0,
@@ -83,6 +102,7 @@ const stopInitialFit = watch(
 );
 
 onMounted(() => {
+  window.addEventListener("keydown", onKeyDown);
   if (!viewportElement.value) return;
 
   // Keep the store's viewport size up to date (used to find the centre of the view, among other things)
@@ -94,6 +114,7 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
+  window.removeEventListener("keydown", onKeyDown);
   resizeObserver?.disconnect();
   stopInitialFit();
 });
@@ -116,6 +137,7 @@ onUnmounted(() => {
       <BaseCard v-for="card in board.cardList" :key="card.id" :card-id="card.id" />
     </div>
     <ZoomControl />
+    <CardColorModal />
   </div>
 </template>
 

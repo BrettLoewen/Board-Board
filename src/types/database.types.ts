@@ -258,18 +258,21 @@ export type Database = {
       }
       user_preferences: {
         Row: {
+          card_defaults: Json
           color_mode: Database["public"]["Enums"]["color_mode"] | null
           created_at: string | null
           updated_at: string | null
           user_id: string
         }
         Insert: {
+          card_defaults?: Json
           color_mode?: Database["public"]["Enums"]["color_mode"] | null
           created_at?: string | null
           updated_at?: string | null
           user_id: string
         }
         Update: {
+          card_defaults?: Json
           color_mode?: Database["public"]["Enums"]["color_mode"] | null
           created_at?: string | null
           updated_at?: string | null

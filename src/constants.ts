@@ -72,10 +72,6 @@ export const REALTIME = {
 };
 
 export const BOARD = {
-  // The default size of a newly created card (in world units)
-  CARD_DEFAULT_SIZE: { width: 200, height: 200 },
-  // The smallest size a card can be resized to (in world units)
-  CARD_MIN_SIZE: { width: 50, height: 50 },
   // Card positions and sizes are clamped to this on the client.
   // Matches the `sane_geometry` check on the cards table so local and database state can't differ.
   MAX_COORDINATE: 99999,
@@ -100,6 +96,16 @@ export const BOARD = {
   // speeding up towards the edge to this many screen pixels per second
   EDGE_PAN_ZONE: 50,
   EDGE_PAN_SPEED: 800,
+  // How long (ms) a card can be pressed without moving and still count as a click (which starts editing a note).
+  // Pressing for longer "picks up" the card instead. Moving the pointer starts a drag straight away.
+  CLICK_HOLD_TIME: 300,
+  // How far (px) the pointer must move after pressing a card before it starts dragging (the Windows drag threshold)
+  DRAG_THRESHOLD: 4,
+  // How close (px) to a card's edge a press must be to resize it rather than move it
+  RESIZE_MARGIN: 6,
+  // How long (ms) after the last keystroke a note's text is written to the database.
+  // It is also written straight away when editing stops.
+  CONTENT_WRITE_DELAY: 600,
   // The dot grid: the screen spacing (px) of the dots at the start of each zoom level, their radius (px),
   // and how much the dots grow halfway between levels (0.4 = 40% bigger)
   DOT_SPACING: 32,

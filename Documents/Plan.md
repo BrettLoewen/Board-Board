@@ -51,16 +51,17 @@ It is a guideline, not a contract. When an implementation finds a better approac
 | Camera on open (B4)  | Fit content bounds plus margin into the viewport, **capped at 100% zoom**. An empty board opens centred on the origin at 100%. The camera is not persisted. (Was A6.) |
 | Edge auto-pan        | **In scope** (was A7, not in scope). Dragging a card within 50 px of the viewport edge pans the camera that way (up to 800 px/s) and carries the card with it, so the board grows as the card moves into the margin. Drag only: resizing near the edge does not pan, because interact's resize rect is in screen pixels. |
 | Zoom input           | Clicking the zoom percentage turns it into a text field. Enter or blur applies it (clamped to the zoom range), Escape cancels. |
+| Note editing (A3)    | Movement decides, not a timer: moving the pointer 4 px after pressing starts a drag straight away. Releasing within **300 ms** without moving is a click, which enters text edit mode with the cursor where you clicked. Holding still past 300 ms "picks up" the card (it lifts) and releasing doesn't edit. While editing, drags inside the text select text, and the frame around the text still moves the card. Escape, or clicking elsewhere, stops editing. (300 ms is below the usual OS long-press of 400–500 ms but well above a normal click.) |
+| Card colours (A4/A5) | A palette of named colours (auto, yellow, orange, pink, purple, blue, green, gray), each with light and dark shades, stored by name. Plus **Custom…**, a colour picker with a hex field, stored as `#rrggbb` (same in both modes). `auto` text picks a readable colour for the card. Picked text colours use a stronger shade of the palette colour. |
+| Card defaults        | New notes use the colours and text size the user **last picked** (saved per card type in `user_preferences.card_defaults`, so shapes and drawings get their own). Before any pick, notes are **green** with auto text at size 16. The toolbar's Note button is drawn in the default colours (the text size doesn't show on it), and right-clicking it changes the defaults ahead of time. |
+| Note text size       | Chosen from the right-click menu: a field to type any size (6–200, Enter or clicking away applies it), above presets 12–64. Sizes are in world units, so text scales with the zoom. A bigger size grows the note to fit. |
+| Note auto-grow (A9)  | A note **grows taller** when its text overflows, while it is being edited. It never shrinks on its own. |
 
 ### 1.2 Defaults assumed by this plan (_unconfirmed_, ask before relying on them)
 
 | #  | Topic                       | Assumed default                                                                                                                                                                                         | Why                                                                                         |
 | -- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| A3 | Note editing vs dragging    | Single click selects, drag moves, and **double-click enters text edit mode**. While editing, drags inside the textarea select text instead of moving the card, and the frame and edges can still move it. | Today dragging the textarea moves the card, which makes text selection impossible.          |
-| A4 | Card colours (N3, S3, D3)   | A fixed **palette of named colours**, each with a light-mode and a dark-mode value, plus `auto` (a neutral that follows the colour mode). Stored by name, not hex.                                       | Chosen colours also stay readable in both modes. A free hex picker can be added later.      |
-| A5 | Note text colour            | `auto` text colour picks black or white for contrast with the card colour. The user can still override it with a palette colour.                                                                       | N3 says text colour can be chosen, and `auto` keeps the defaults readable.                  |
 | A8 | User colour (C4)            | Derived deterministically from the user id (a hash into a ~12-colour palette). Not stored and not user-pickable.                                                                                         | Every client computes the same colour with no schema change. Collisions are possible.       |
-| A9 | Note auto-grow              | A note **grows taller** when its text overflows (as in the prototype), but only for the holder while editing. The growth is a normal geometry change.                                                   | Avoids hidden text. Never shrinks automatically.                                             |
 
 ### 1.3 Open questions
 
@@ -224,7 +225,7 @@ BaseCard.vue  (geometry, z-index, interact.js drag/resize, lock state & visuals,
        DrawCardBody.vue   SVG polyline(s) in card-pixel units (4.4)
 ```
 
-A **card type registry** (`src/cards/registry.ts`, or `CARD_TYPES` in `constants.ts`) holds, per type: the body component, default size, minimum size, default content, context-menu items, and a `parseContent(json)` guard. Adding a type means adding one body component and one registry entry.
+A **card type registry** (`CARD_TYPES` in `src/cards/registry.ts`) holds, per type: the body component, default size, minimum size, default content, context-menu items, and a `parseContent(json)` guard. Adding a type means adding one body component and one registry entry.
 
 Bodies never write to the database or the channel themselves. They emit content changes to `BaseCard` / the store, which owns the write and broadcast pipeline (Section 6). That keeps the realtime rules in one place.
 
@@ -630,7 +631,7 @@ C1 (sharing with friends) **already exists** through `shared_boards` and the Sha
 - `src/components/Cards.vue`, `Card.vue`: global channel, no board filter, stale `card_id`, copies props into local `reactive`. **Replace them on basic-board.**
 - `src/router/index.ts` `checkBoardAccess`: takes the id with `to.fullPath.substring(to.fullPath.length, 7)`, which breaks if a query or hash is ever added. Use `to.params.id`. (Small and low risk. Fix it when touching the board route.)
 - `user:<id>` realtime topics are public channels, so any client can send fake friend-request broadcasts to anyone (only toasts, but still). A later hardening task: make them private, with a `realtime.messages` policy of `topic = 'user:' || auth.uid()` for select, and a sender-side check.
-- `card` writes currently send the whole row (`update(card)`), including `created_at`. New code sends only the changed fields plus `rev`.
+- ~~`card` writes send the whole row.~~ Done: `persistCard` sends every user-editable field (geometry, content, layer, z_order) plus `rev`, never `created_at` and the like. It deliberately sends all editable fields rather than only the changed ones. With per-field writes, a stale write that the rev trigger skips would lose its field, if a newer write to a *different* field had overtaken it.
 
 ### 10.3 Possible later improvements (not in Requirements)
 
