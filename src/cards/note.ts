@@ -46,8 +46,7 @@ export function noteMenuItems(card: Card, board: BoardStore): ContextMenuItem[] 
   const content = parseNoteContent(card.content);
 
   const setOptions = (patch: Partial<NoteDefaults>) => {
-    board.updateContent(card.id, patch);
-    board.persistCard(card.id);
+    board.changeContent(card.id, patch);
     board.setNoteDefaults(patch);
   };
 

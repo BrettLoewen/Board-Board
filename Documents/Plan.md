@@ -584,6 +584,13 @@ A card held by someone else renders with a border in the holder's colour and a s
    - Private `board:<id>` channel, ephemeral events for geometry, content, create and delete (6.2), the rev rule (6.4), join and reconnect (6.5).
    - Presence with `hold` and the conflict rule (7.1–7.2), **without lock visuals**. Include the "card is busy" guard, so a second user's drag is refused (confirmed).
    - Leave out: presence indicators, cursors, lock visuals and ghost strokes.
+   - **As built:**
+     - The spike passed against the local stack (realtime v2.66.2). Private channels, presence, client broadcasts and trigger events all work, so the Postgres Changes fallback isn't needed.
+     - The card trigger uses `realtime.send` with only the new row (or `{ id }` for deletes), the smaller option from 6.3.
+     - Two extra triggers send `BOARD_DELETED` (board deleted) and `ACCESS_REVOKED` (a `shared_boards` row deleted, with the user's id) to the board's channel. Clients leave the board on either, instead of only finding out from a 0-row write (6.6).
+     - Every local change bumps the card's `rev`, and writes and broadcasts carry the current `rev`.
+     - Deleting a card and the right-click menu's one-off changes (colour, size, layer, bring-to-front) are refused while another client holds the card, rather than taking a brief hold of their own.
+     - Not done yet: receivers don't interpolate between geometry broadcasts (6.2), and there's no "reconnecting" state on cards (6.5). Both are visual, so they fit the Collaboration branch.
 5. **Tests** (Section 9.5).
 
 ### 9.2 Shapes branch (S1–S3)

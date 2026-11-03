@@ -14,9 +14,10 @@ onMounted(() => {
   board.load(routeId);
 });
 
-// The board store only ever holds the open board, so clear it when the board is closed
+// The board store only ever holds the open board, so leave it (letting go of any held card and the board's
+// realtime channel) when the board is closed
 onUnmounted(() => {
-  board.reset();
+  board.leave();
 });
 </script>
 

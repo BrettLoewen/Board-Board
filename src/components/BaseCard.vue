@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, useTemplateRef } from "vue";
+import { computed, onMounted, onUnmounted, ref, useTemplateRef, watch } from "vue";
 import interact from "interactjs";
 import type { ContextMenuItem } from "@nuxt/ui";
 import { useBoardStore } from "@/stores/board";
-import { BOARD } from "@/constants";
+import { BOARD, REALTIME } from "@/constants";
 import { CARD_TYPES } from "@/cards/registry";
 import { LAYERS } from "@/types/cards";
+import type { HoldMode } from "@/realtime/locks";
 import type { Point } from "@/utils/camera";
 import { throttle } from "@/utils/throttle";
 import { debounce } from "@/utils/debounce";
@@ -39,11 +40,21 @@ const throttledPersist = throttle(
 
 // Write the card's content a short while after the user stops typing.
 // It is also written straight away when editing stops (if it changed).
-let contentChanged = false;
-const debouncedPersistContent = debounce(() => {
-  contentChanged = false;
-  board.persistCard(props.cardId);
-}, BOARD.CONTENT_WRITE_DELAY);
+const debouncedPersistContent = debounce(
+  () => board.persistCard(props.cardId),
+  BOARD.CONTENT_WRITE_DELAY,
+);
+
+// Share the card's changes with everyone else on the board while it is moved, resized or typed in.
+// A final broadcast is sent when the card is released.
+const throttledBroadcastGeometry = throttle(
+  () => board.broadcastGeometry(props.cardId),
+  REALTIME.RATES.GEOMETRY,
+);
+const throttledBroadcastContent = throttle(
+  () => board.broadcastContent(props.cardId),
+  REALTIME.RATES.CONTENT,
+);
 
 // The current zoom. Read at event time so zooming mid-interaction is handled correctly.
 function scale(): number {
@@ -104,39 +115,93 @@ function onMouseDown(event: MouseEvent): void {
   if (isEditing.value && !(event.target as Element).closest("textarea")) event.preventDefault();
 }
 
-// A drag or resize has started, so the press wasn't a click
-function startInteraction(): void {
+//============ Holding the card ============
+// The drag or resize in progress, if this client is holding the card for one
+let activeInteraction: { stop: () => void } | null = null;
+
+// A drag or resize has started, so the press wasn't a click. Grab the card first:
+// if someone else is holding it, the drag is refused and the card doesn't move.
+function startInteraction(event: { interaction: { stop: () => void } }, mode: HoldMode): boolean {
   endPress();
+  if (!board.acquire(props.cardId, mode)) {
+    event.interaction.stop();
+    return false;
+  }
+
+  activeInteraction = event.interaction;
   dragging.value = true;
   board.setCardInteraction(true);
+  return true;
 }
 
+// The drag or resize ended. Let go of the card (writing its final state first),
+// unless its text is still being edited, in which case keep holding it.
 function endInteraction(): void {
+  activeInteraction = null;
   dragging.value = false;
   board.setCardInteraction(false);
-  board.persistCard(props.cardId);
+  if (isEditing.value) board.commit(props.cardId);
+  else board.release(props.cardId);
 }
 
+// Someone else won this card while this client was grabbing it (both grabbed it at nearly the same time).
+// Stop the drag or resize where it is. The store has already let go of the card.
+watch(
+  () => board.lostHold,
+  (lost) => {
+    if (lost?.cardId !== props.cardId || !activeInteraction) return;
+    activeInteraction.stop();
+    activeInteraction = null;
+    stopEdgePan();
+    dragging.value = false;
+    board.setCardInteraction(false);
+  },
+);
+
 //============ Content from the body ============
+// While a note is being edited, its lock is let go after a while without typing (so others can use the card).
+// The note stays focused, and the next keystroke takes the lock back if nobody else has taken it.
+let idleTimer: ReturnType<typeof setTimeout> | undefined;
+function restartIdleTimer(): void {
+  clearTimeout(idleTimer);
+  idleTimer = setTimeout(() => {
+    if (isEditing.value) board.release(props.cardId);
+  }, REALTIME.EDIT_IDLE_RELEASE);
+}
+watch(isEditing, (editing) => {
+  if (editing) restartIdleTimer();
+  else clearTimeout(idleTimer);
+});
+
+// About to change the content: make sure this client still holds the card.
+// If someone else took it while this client was idle, the change is refused and editing stops.
+function onBeforeInput(event: Event): void {
+  if (board.isHolding(props.cardId)) return;
+  if (!board.acquire(props.cardId, "edit")) {
+    event.preventDefault();
+    board.stopEditing(props.cardId);
+  }
+}
+
 function onContent(patch: Record<string, string>): void {
   board.updateContent(props.cardId, patch);
-  contentChanged = true;
+  throttledBroadcastContent();
   debouncedPersistContent();
+  restartIdleTimer();
 }
 
 // The body's content has outgrown the card, so make the card taller
+// Only the client changing the card grows it (everyone else gets the new size from that client).
 function onGrow(height: number): void {
-  if (!card.value) return;
+  if (!card.value || !(isEditing.value || board.changedHereRecently(props.cardId))) return;
   board.updateGeometry(props.cardId, { height: card.value.height + height });
+  throttledBroadcastGeometry();
   throttledPersist();
 }
 
+// Editing ended (Escape, or focus moved away). Stopping lets go of the card, writing its content first.
 function onStopEditing(): void {
   board.stopEditing(props.cardId);
-  if (contentChanged) {
-    contentChanged = false;
-    board.persistCard(props.cardId);
-  }
 }
 
 //============ Right-click menu ============
@@ -203,6 +268,7 @@ function edgePanStep(time: number): void {
     // panBy moves the board's content, so it moves the opposite way to the view
     const distance = BOARD.EDGE_PAN_SPEED * elapsed;
     if ((x || y) && board.edgePan(props.cardId, -x * distance, -y * distance)) {
+      throttledBroadcastGeometry();
       throttledPersist();
     }
   }
@@ -235,18 +301,19 @@ onMounted(() => {
       listeners: {
         // Zooming is blocked while a card is being dragged or resized
         start(event) {
-          startInteraction();
+          if (!startInteraction(event, "move")) return;
           dragPointer = { x: event.clientX, y: event.clientY };
           edgePanFrame = requestAnimationFrame(edgePanStep);
         },
         move(event) {
-          if (!card.value) return;
+          if (!card.value || !activeInteraction) return;
 
           dragPointer = { x: event.clientX, y: event.clientY };
           board.updateGeometry(props.cardId, {
             x: card.value.x + event.dx / scale(),
             y: card.value.y + event.dy / scale(),
           });
+          throttledBroadcastGeometry();
           throttledPersist();
         },
         end() {
@@ -274,11 +341,11 @@ onMounted(() => {
       ],
       listeners: {
         // Zooming is blocked while a card is being dragged or resized
-        start() {
-          startInteraction();
+        start(event) {
+          startInteraction(event, "resize");
         },
         move(event) {
-          if (!card.value) return;
+          if (!card.value || !activeInteraction) return;
 
           // event.rect is the card's new on-screen rect, so dividing it by the scale gives its world size
           board.updateGeometry(props.cardId, {
@@ -287,6 +354,7 @@ onMounted(() => {
             x: card.value.x + event.deltaRect.left / scale(),
             y: card.value.y + event.deltaRect.top / scale(),
           });
+          throttledBroadcastGeometry();
           throttledPersist();
         },
         end() {
@@ -300,6 +368,7 @@ onMounted(() => {
 onUnmounted(() => {
   stopEdgePan();
   clearTimeout(holdTimer);
+  clearTimeout(idleTimer);
   window.removeEventListener("pointerup", onPointerUp);
   interactable?.unset();
 });
@@ -334,6 +403,7 @@ onUnmounted(() => {
         :caret-point="caretPoint"
         @content="onContent"
         @grow="onGrow"
+        @before-input="onBeforeInput"
         @stop-editing="onStopEditing"
       />
     </div>

@@ -64,11 +64,38 @@ friendRequestErrorMessageMap.set(
 export const REALTIME = {
   TOPICS: {
     USER: "user:",
+    // Each board's private channel is "board:<board id>"
+    BOARD: "board:",
   },
   EVENTS: {
     FRIEND_REQUEST: "friend_request",
     FRIEND_ACCEPTED: "friend_accepted",
+    // Sent between clients on a board's channel, before changes are written
+    CARD_GEOMETRY: "card:geometry",
+    CARD_CONTENT: "card:content",
+    CARD_CREATE: "card:create",
+    CARD_DELETE: "card:delete",
+    // Sent by database triggers on a board's channel (see the board_realtime migration)
+    DB_INSERT: "INSERT",
+    DB_UPDATE: "UPDATE",
+    DB_DELETE: "DELETE",
+    BOARD_DELETED: "BOARD_DELETED",
+    ACCESS_REVOKED: "ACCESS_REVOKED",
   },
+  // How often (ms) a card's changes are broadcast while it is being moved, resized or typed in.
+  // A final broadcast is always sent when the card is released. Kept in one place so they can be tuned:
+  // the free tier allows roughly 100 messages per second per project, and going over disconnects clients.
+  RATES: {
+    GEOMETRY: 50,
+    CONTENT: 100,
+  },
+  // Two clients can grab the same card before either sees the other's presence. Holds that arrive within
+  // this long (ms) of each other are settled by the earliest grab. A hold arriving later never displaces
+  // a hold everyone has already seen.
+  CONTEST_WINDOW: 1500,
+  // How long (ms) without typing before a note's lock is released (the note stays focused, and the lock is
+  // taken again on the next keystroke if nobody else has taken it)
+  EDIT_IDLE_RELEASE: 10000,
 };
 
 export const BOARD = {

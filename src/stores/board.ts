@@ -1,8 +1,9 @@
 import { defineStore } from "pinia";
 import { computed, ref, type Ref } from "vue";
 import { useToast } from "vue-toastification";
+import { useRouter } from "vue-router";
 import { supabase } from "@/lib/supabaseClient";
-import { BOARD } from "@/constants";
+import { BOARD, REALTIME, ROUTES } from "@/constants";
 import {
   clamp,
   clampCamera,
@@ -21,6 +22,8 @@ import type { CardColor, CardDefaults, CardType, HexColor, NoteDefaults } from "
 import { CARD_TYPES } from "@/cards/registry";
 import { parseNoteDefaults } from "@/cards/note";
 import { useAuthStore } from "./auth";
+import { openBoardChannel, type BoardChannel } from "@/realtime/boardChannel";
+import { createLockResolver, type BoardPresence, type Hold, type HoldMode } from "@/realtime/locks";
 
 export type Card = Tables<"cards">;
 
@@ -45,11 +48,15 @@ function clampCoordinate(value: number): number {
   return Math.min(BOARD.MAX_COORDINATE, Math.max(-BOARD.MAX_COORDINATE, value));
 }
 
+// Identifies this browser tab on a board's channel. One user with two tabs open is two clients.
+const clientId = crypto.randomUUID();
+
 // The single source of truth for everything the open board renders.
 // There is only ever one board open, so the store is reset when the board page unmounts.
 export const useBoardStore = defineStore("board", () => {
   const toast = useToast();
   const auth = useAuthStore();
+  const router = useRouter();
 
   // The board that is open, and the cards it holds (keyed by card id)
   const boardId = ref<string | null>(null);
@@ -78,6 +85,29 @@ export const useBoardStore = defineStore("board", () => {
 
   // Set while the custom colour picker is open
   const customColorRequest = ref<CustomColorRequest | null>(null);
+
+  //============ Collaboration state ============
+  // The board's realtime channel, while the board is open
+  let channel: BoardChannel | null = null;
+  // Whether the channel is connected (it reconnects by itself after a dropped connection)
+  const connected = ref(false);
+  // Everyone with the board open (including this client), and which client holds each held card
+  const presences = ref<BoardPresence[]>([]);
+  const lockByCardId = ref(new Map<string, string>());
+  let lockResolver = createLockResolver();
+  // The card this client holds (it is moving, resizing or editing it), and whether it changed it while holding it
+  const myHold = ref<Hold | null>(null);
+  let holdChanged = false;
+  // Set when another client wins a card this client was holding, so the card's frame can stop the interaction
+  const lostHold = ref<{ cardId: string; at: number } | null>(null);
+  // When this client joined the board (shared through presence)
+  let joinedAt = 0;
+  // Cards created here whose insert hasn't returned yet, and cards deleted here whose delete hasn't returned yet.
+  // A refetch mustn't remove the first or bring back the second.
+  const pendingInserts = new Set<string>();
+  const pendingDeletes = new Set<string>();
+  // Cards changed here that haven't been written since
+  const dirtyCards = new Set<string>();
 
   // The cards as an array, for rendering
   const cardList = computed(() => Array.from(cards.value.values()));
@@ -157,6 +187,25 @@ export const useBoardStore = defineStore("board", () => {
     else cardDefaults.value = parseCardDefaults(preferencesResult.data[0]?.card_defaults);
 
     loaded.value = true;
+
+    // Join the board's channel to see (and share) changes as they happen
+    const opened = await openBoardChannel(id, clientId, channelHandlers);
+    if (boardId.value !== id) {
+      await opened.close();
+      return;
+    }
+    channel = opened;
+  }
+
+  // Leave the board: let go of any held card (writing its final state first), then leave the channel
+  async function leave(): Promise<void> {
+    if (editingCardId.value) stopEditing(editingCardId.value);
+    if (myHold.value) await release(myHold.value.cardId);
+
+    const closing = channel;
+    channel = null;
+    reset();
+    await closing?.close();
   }
 
   // Clear everything about the open board
@@ -170,6 +219,16 @@ export const useBoardStore = defineStore("board", () => {
     selectedCardId.value = null;
     editingCardId.value = null;
     customColorRequest.value = null;
+    connected.value = false;
+    presences.value = [];
+    lockByCardId.value = new Map();
+    lockResolver = createLockResolver();
+    myHold.value = null;
+    holdChanged = false;
+    lostHold.value = null;
+    pendingInserts.clear();
+    pendingDeletes.clear();
+    dirtyCards.clear();
   }
 
   // Move the camera by a distance in screen pixels (dragging the board right moves the camera left)
@@ -337,39 +396,77 @@ export const useBoardStore = defineStore("board", () => {
     });
     select(insert.id);
 
-    // Write the card to the database
+    // Tell everyone else straight away, then write the card to the database
+    pendingInserts.add(insert.id);
+    channel?.send(REALTIME.EVENTS.CARD_CREATE, cards.value.get(insert.id)!);
     const { error } = await supabase.from("cards").insert(insert);
+    pendingInserts.delete(insert.id);
 
+    // If the insert failed, take the card back everywhere
     if (error) {
       console.error(error);
-      cards.value.delete(insert.id);
-      if (selectedCardId.value === insert.id) select(null);
+      removeLocally(insert.id);
+      channel?.send(REALTIME.EVENTS.CARD_DELETE, { id: insert.id });
       toast.error("Could not create the card!");
     }
   }
 
-  // Delete a card. It is removed locally straight away, and restored if the delete fails.
+  // Delete a card, unless someone else is holding it.
+  // It is removed locally (and for everyone else) straight away, and restored if the delete fails.
   async function deleteCard(id: string): Promise<void> {
     const card = cards.value.get(id);
-    if (!card) return;
+    if (!card || isHeldByOther(id)) return;
 
-    cards.value.delete(id);
-    if (selectedCardId.value === id) select(null);
+    pendingDeletes.add(id);
+    removeLocally(id);
+    channel?.send(REALTIME.EVENTS.CARD_DELETE, { id });
 
     const { error } = await supabase.from("cards").delete().eq("id", id);
+    pendingDeletes.delete(id);
 
     if (error) {
       console.error(error);
       cards.value.set(id, card);
+      channel?.send(REALTIME.EVENTS.CARD_CREATE, card);
       toast.error("Could not delete the card!");
     }
   }
 
+  // Remove a card from this client only (it was deleted, here or by someone else)
+  function removeLocally(id: string): void {
+    cards.value.delete(id);
+    dirtyCards.delete(id);
+    if (editingCardId.value === id) editingCardId.value = null;
+    if (selectedCardId.value === id) selectedCardId.value = null;
+    if (myHold.value?.cardId === id) {
+      myHold.value = null;
+      trackPresence();
+    }
+  }
+
+  // Record a local change to a card: it gets the next rev (so everyone applies changes in order) and needs writing
+  function touch(card: Card): void {
+    card.rev += 1;
+    dirtyCards.add(card.id);
+    if (myHold.value?.cardId === card.id) holdChanged = true;
+    lastLocalChange = { cardId: card.id, at: Date.now() };
+  }
+
+  // The card this client last changed, and when. Changes from others don't count.
+  let lastLocalChange = { cardId: "", at: 0 };
+
+  // Whether this client changed a card in the last second. Used where every viewer reacts to a change (such as a
+  // note growing to fit a bigger text size) but only the client that made the change should act on it.
+  function changedHereRecently(id: string): boolean {
+    return lastLocalChange.cardId === id && Date.now() - lastLocalChange.at < 1000;
+  }
+
   // Change a card's position and/or size locally (in world units).
-  // Call persistCard to write the change to the database.
+  // Call persistCard to write the change to the database, and broadcastGeometry to share it.
   function updateGeometry(id: string, geometry: Partial<CardGeometry>): void {
     const card = cards.value.get(id);
     if (!card) return;
+    touch(card);
 
     if (geometry.x !== undefined) card.x = clampCoordinate(geometry.x);
     if (geometry.y !== undefined) card.y = clampCoordinate(geometry.y);
@@ -378,10 +475,12 @@ export const useBoardStore = defineStore("board", () => {
       card.height = Math.min(BOARD.MAX_COORDINATE, geometry.height);
   }
 
-  // Merge changes into a card's content locally. Call persistCard to write the change to the database.
+  // Merge changes into a card's content locally.
+  // Call persistCard to write the change to the database, and broadcastContent to share it.
   function updateContent(id: string, patch: Record<string, Json | undefined>): void {
     const card = cards.value.get(id);
     if (!card) return;
+    touch(card);
 
     const content =
       card.content && typeof card.content === "object" && !Array.isArray(card.content)
@@ -390,15 +489,16 @@ export const useBoardStore = defineStore("board", () => {
     card.content = { ...content, ...patch };
   }
 
-  // Write a card's current state to the database.
-  // Every write carries the next rev, so writes that arrive out of order are skipped by the database.
+  // Write a card's current state to the database. Never writes a card someone else is holding.
+  // Every write carries the card's rev, so writes that arrive out of order are skipped by the database.
   // Every write also carries every field the user can change, not just the one that changed: if an older write
   // is skipped, the newer one that replaced it must not leave the older write's change behind.
-  async function persistCard(id: string): Promise<void> {
+  async function persistCard(id: string, retry = true): Promise<void> {
     const card = cards.value.get(id);
-    if (!card) return;
+    if (!card || isHeldByOther(id)) return;
 
-    card.rev += 1;
+    dirtyCards.delete(id);
+    const sentRev = card.rev;
     const update: TablesUpdate<"cards"> = {
       x: card.x,
       y: card.y,
@@ -421,10 +521,32 @@ export const useBoardStore = defineStore("board", () => {
       return;
     }
 
-    // Adopt the database's rev if it is higher (the database bumps it when two writes share a rev).
-    // TODO (basic collaboration): a write that returns 0 rows needs to re-select the card (Plan 6.4).
+    // Adopt the database's rev if it is higher (the database bumps it when two writes share a rev)
     const written = data[0];
-    if (written && written.rev > card.rev) card.rev = written.rev;
+    if (written) {
+      if (written.rev > card.rev) card.rev = written.rev;
+      return;
+    }
+
+    // No row was written. Either a newer write already landed (the database skips writes with a lower rev),
+    // or the card is gone (deleted, or this user lost access to the board).
+    const { data: rows } = await supabase.from("cards").select().eq("id", id).limit(1);
+    const row = rows?.[0];
+    if (!row) {
+      removeLocally(id);
+      await checkBoardAccess();
+      return;
+    }
+
+    // Catch up with the newer rev. If this client still holds the card, its state is the latest, so write it again.
+    const current = cards.value.get(id);
+    if (current && row.rev >= sentRev) {
+      current.rev = Math.max(current.rev, row.rev);
+      if (retry && myHold.value?.cardId === id) {
+        touch(current);
+        await persistCard(id, false);
+      }
+    }
   }
 
   // The highest z-index used by any card in a layer
@@ -436,41 +558,255 @@ export const useBoardStore = defineStore("board", () => {
     return top;
   }
 
-  // Bring a card in front of the other cards in its layer (cards come to the front when they're touched)
+  // Bring a card in front of the other cards in its layer (cards come to the front when they're touched).
+  // Skipped while someone else holds the card.
   function bringToFront(id: string): void {
     const card = cards.value.get(id);
-    if (!card || zIndexById.value.get(id) === topZIndexInLayer(card.layer)) return;
+    if (!card || isHeldByOther(id) || zIndexById.value.get(id) === topZIndexInLayer(card.layer))
+      return;
 
     card.z_order = frontZOrder(card.layer, id);
+    touch(card);
+    broadcastGeometry(id);
     persistCard(id);
   }
 
-  // Move a card to another layer, in front of the cards already in it
+  // Move a card to another layer, in front of the cards already in it. Skipped while someone else holds the card.
   function setLayer(id: string, layer: number): void {
     const card = cards.value.get(id);
-    if (!card || card.layer === layer) return;
+    if (!card || card.layer === layer || isHeldByOther(id)) return;
 
     card.z_order = frontZOrder(layer, id);
     card.layer = layer;
+    touch(card);
+    broadcastGeometry(id);
+    persistCard(id);
+  }
+
+  // Change a card's content in one go (for example, its colour from the menu), share it and write it.
+  // Skipped while someone else holds the card.
+  function changeContent(id: string, patch: Record<string, Json | undefined>): void {
+    if (isHeldByOther(id)) return;
+    updateContent(id, patch);
+    broadcastContent(id);
     persistCard(id);
   }
 
   // Select a card (or nothing). Selecting a different card stops editing the current one.
   function select(id: string | null): void {
+    if (editingCardId.value && editingCardId.value !== id) stopEditing(editingCardId.value);
     selectedCardId.value = id;
-    if (editingCardId.value !== id) editingCardId.value = null;
   }
 
   // Start editing a card's content (for example, typing in a note). The card is selected too.
-  function startEditing(id: string): void {
+  // Refused (returns false) while someone else holds the card.
+  function startEditing(id: string): boolean {
     select(id);
+    if (!acquire(id, "edit")) return false;
     editingCardId.value = id;
+    return true;
   }
 
-  // Stop editing a card, if it is the one being edited. It stays selected.
+  // Stop editing a card, if it is the one being edited, and let go of it. It stays selected.
   function stopEditing(id: string): void {
-    if (editingCardId.value === id) editingCardId.value = null;
+    if (editingCardId.value !== id) return;
+    editingCardId.value = null;
+    release(id);
   }
+
+  //============ Holding cards ============
+  // Only the client holding a card changes it, so two people never overwrite each other's changes.
+  // Holds are shared through presence, and every client works out the same holder for each card (see locks.ts).
+
+  // The client holding a card: the agreed holder, or this client if it has just grabbed the card
+  // and nobody else holds it yet
+  function holderOf(id: string): string | undefined {
+    return lockByCardId.value.get(id) ?? (myHold.value?.cardId === id ? clientId : undefined);
+  }
+
+  // Whether another client is holding a card (it can't be moved, edited or deleted here until they let go)
+  function isHeldByOther(id: string): boolean {
+    const holder = holderOf(id);
+    return holder !== undefined && holder !== clientId;
+  }
+
+  // Whether this client is holding a card
+  function isHolding(id: string): boolean {
+    return myHold.value?.cardId === id && !isHeldByOther(id);
+  }
+
+  // Share this client's presence (who it is, and which card it holds)
+  function trackPresence(): void {
+    channel?.track({
+      clientId,
+      userId: auth.user?.id ?? "",
+      username: auth.profile?.username ?? "",
+      joinedAt,
+      hold: myHold.value,
+    });
+  }
+
+  // Grab a card to move, resize or edit it. Returns false (and grabs nothing) if someone else holds it.
+  // The grab takes effect straight away, without waiting for presence to come back, so grabbing feels instant.
+  // A client holds one card at a time, so grabbing another card lets go of the first.
+  function acquire(id: string, mode: HoldMode): boolean {
+    if (isHeldByOther(id)) return false;
+    if (myHold.value?.cardId === id) return true;
+    if (myHold.value) release(myHold.value.cardId);
+
+    myHold.value = { cardId: id, mode, at: Date.now() };
+    holdChanged = false;
+    trackPresence();
+    return true;
+  }
+
+  // Write a held card's latest state and share it, keeping hold of it (for example, after dragging a note
+  // that is still being edited)
+  async function commit(id: string): Promise<void> {
+    await persistCard(id);
+    broadcastGeometry(id);
+    broadcastContent(id);
+  }
+
+  // Let go of a card. If it changed, its final state is written first and then broadcast with the rev the database
+  // settled on, and only then is the hold dropped. That way whoever grabs it next starts from the latest state.
+  async function release(id: string): Promise<void> {
+    if (myHold.value?.cardId !== id) return;
+
+    if (holdChanged) {
+      holdChanged = false;
+      await commit(id);
+    }
+
+    // Grabbing another card while this one was being written replaces the hold, so only drop it if it's still this one
+    if (myHold.value?.cardId === id) {
+      myHold.value = null;
+      trackPresence();
+    }
+  }
+
+  // Another client won a card this client had just grabbed (both grabbed it at nearly the same time).
+  // Stop changing it, let go, and go back to the card as it is in the database.
+  // The winner's changes are applied from now on, because this client no longer holds it.
+  async function loseHold(id: string): Promise<void> {
+    myHold.value = null;
+    holdChanged = false;
+    dirtyCards.delete(id);
+    if (editingCardId.value === id) editingCardId.value = null;
+    lostHold.value = { cardId: id, at: Date.now() };
+    trackPresence();
+
+    const { data } = await supabase.from("cards").select().eq("id", id).limit(1);
+    const row = data?.[0];
+    if (row && !isHolding(id)) cards.value.set(id, row);
+  }
+
+  //============ Sharing changes ============
+  // Broadcast a card's position, size and stacking to everyone else on the board
+  function broadcastGeometry(id: string): void {
+    const card = cards.value.get(id);
+    if (!card || isHeldByOther(id)) return;
+    const { x, y, width, height, layer, z_order, rev } = card;
+    channel?.send(REALTIME.EVENTS.CARD_GEOMETRY, { id, x, y, width, height, layer, z_order, rev });
+  }
+
+  // Broadcast a card's content to everyone else on the board
+  function broadcastContent(id: string): void {
+    const card = cards.value.get(id);
+    if (!card || isHeldByOther(id)) return;
+    channel?.send(REALTIME.EVENTS.CARD_CONTENT, { id, content: card.content, rev: card.rev });
+  }
+
+  // Apply a change from someone else, if it is newer than what this client has (a higher rev).
+  // A client never applies changes to the card it is holding: it is the only one changing it.
+  function applyRemote(id: string, fields: Partial<Card> & { rev: number }): void {
+    const card = cards.value.get(id);
+    if (!card || myHold.value?.cardId === id || fields.rev <= card.rev) return;
+    Object.assign(card, fields);
+  }
+
+  // A card arrived from someone else or from the database: add it if it's new, or apply it if it's newer
+  function upsertRemote(row: Card): void {
+    if (pendingDeletes.has(row.id)) return;
+    if (cards.value.has(row.id)) applyRemote(row.id, row);
+    else cards.value.set(row.id, row);
+  }
+
+  // Reload the board's cards from the database and merge them in by rev.
+  // Used whenever the channel (re)connects, so nothing that changed while it was disconnected is missed.
+  async function refetchCards(): Promise<void> {
+    const id = boardId.value;
+    if (!id) return;
+    const { data, error } = await supabase.from("cards").select().eq("board_id", id);
+    if (error || boardId.value !== id) {
+      if (error) console.error(error);
+      return;
+    }
+
+    const fetched = new Set<string>();
+    for (const row of data) {
+      fetched.add(row.id);
+      upsertRemote(row);
+    }
+
+    // Cards that are gone from the database were deleted while this client wasn't listening
+    for (const cardId of cards.value.keys()) {
+      if (!fetched.has(cardId) && !pendingInserts.has(cardId)) removeLocally(cardId);
+    }
+  }
+
+  // Leave the board for the dashboard, with a message saying why
+  function leaveBoard(message: string): void {
+    toast.info(message);
+    router.push(ROUTES.DASHBOARD);
+  }
+
+  // A card write found nothing to write to. If the board itself is gone too, this user has lost access to it.
+  async function checkBoardAccess(): Promise<void> {
+    const id = boardId.value;
+    if (!id) return;
+    const { data } = await supabase.from("boards").select("id").eq("id", id).limit(1);
+    if (data && data.length === 0 && boardId.value === id) {
+      leaveBoard("You no longer have access to this board.");
+    }
+  }
+
+  // What the board does with each message on its channel
+  const channelHandlers = {
+    onGeometry: (message: Partial<Card> & { id: string; rev: number }) =>
+      applyRemote(message.id, message),
+    onContent: (message: Partial<Card> & { id: string; rev: number }) =>
+      applyRemote(message.id, message),
+    onCreate: upsertRemote,
+    onDelete: (id: string) => {
+      if (!pendingInserts.has(id)) removeLocally(id);
+    },
+    onCommitted: upsertRemote,
+    onCommittedDelete: removeLocally,
+    onBoardDeleted: () => leaveBoard("This board was deleted."),
+    onAccessRevoked: (userId: string) => {
+      if (userId === auth.user?.id) leaveBoard("You no longer have access to this board.");
+    },
+    onPresence: (list: BoardPresence[]) => {
+      presences.value = list;
+      lockByCardId.value = lockResolver.update(list);
+
+      // If someone else won the card this client is holding, let go of it
+      const hold = myHold.value;
+      if (hold && isHeldByOther(hold.cardId)) loseHold(hold.cardId);
+    },
+    onConnected: () => {
+      connected.value = true;
+      if (!joinedAt) joinedAt = Date.now();
+      // Catch up on anything missed, then share this client's presence (including any card it was holding,
+      // which the rules in locks.ts give back to it only if nobody else took it in the meantime)
+      refetchCards();
+      trackPresence();
+    },
+    onDisconnected: () => {
+      connected.value = false;
+    },
+  };
 
   // Change the colours this user's new notes start with, and save them to their preferences
   async function setNoteDefaults(patch: Partial<NoteDefaults>): Promise<void> {
@@ -505,6 +841,11 @@ export const useBoardStore = defineStore("board", () => {
     camera,
     viewport,
     cardInteraction,
+    connected,
+    presences,
+    lockByCardId,
+    myHold,
+    lostHold,
     selectedCardId,
     editingCardId,
     cardDefaults,
@@ -516,6 +857,7 @@ export const useBoardStore = defineStore("board", () => {
     bounds,
     minScale,
     load,
+    leave,
     reset,
     panBy,
     edgePan,
@@ -527,8 +869,17 @@ export const useBoardStore = defineStore("board", () => {
     createCard,
     deleteCard,
     updateContent,
+    changeContent,
     bringToFront,
     setLayer,
+    isHeldByOther,
+    isHolding,
+    changedHereRecently,
+    acquire,
+    commit,
+    release,
+    broadcastGeometry,
+    broadcastContent,
     select,
     startEditing,
     stopEditing,

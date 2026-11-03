@@ -17,6 +17,8 @@ const emit = defineEmits<{
   grow: [height: number];
   // The user finished editing (Escape, or focus moved away)
   stopEditing: [];
+  // The text is about to change (so BaseCard can check this client still holds the card, and refuse if not)
+  beforeInput: [event: Event];
 }>();
 
 const content = computed(() => parseNoteContent(props.card.content));
@@ -75,7 +77,7 @@ function onInput(event: Event): void {
 }
 
 // A bigger text size can push the text past the bottom too, so grow the note to fit.
-// TODO (basic collaboration): only the user who changed the size should grow the note, not everyone who sees it change.
+// (Every viewer sees the size change, but BaseCard only grows the note for the client that made it.)
 watch(() => content.value.fontSize, growToFit);
 
 // While the note isn't being edited, pressing on the text must not focus it or start selecting text.
@@ -95,6 +97,7 @@ function onMouseDown(event: MouseEvent): void {
       :readonly="!editable"
       :tabindex="editable ? 0 : -1"
       placeholder="Type something..."
+      @beforeinput="emit('beforeInput', $event)"
       @input="onInput"
       @mousedown="onMouseDown"
       @blur="emit('stopEditing')"
