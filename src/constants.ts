@@ -85,6 +85,26 @@ export const BOARD = {
   // How often (ms) a card's geometry is written to the database while it is being dragged or resized.
   // A final write is always made when the interaction ends.
   GEOMETRY_WRITE_INTERVAL: 500,
+  // The size of the board before any cards are added (in world units). Centred on the origin.
+  // The board never shrinks below this (or below the viewport's size at 100% zoom).
+  START_SIZE: { w: 3200, h: 2000 },
+  // The space kept around the cards at the board's edge (in world units)
+  MARGIN: 300,
+  // The zoom limits. The actual minimum zoom is higher whenever the whole board fits at a closer zoom.
+  MIN_SCALE: 0.1,
+  MAX_SCALE: 4,
+  // How fast the mouse wheel zooms (per pixel scrolled). Pinch gestures send much smaller deltas, so they use a larger value.
+  WHEEL_ZOOM_SPEED: 0.0015,
+  PINCH_ZOOM_SPEED: 0.01,
+  // Dragging a card within this distance (px) of the viewport's edge pans the board in that direction,
+  // speeding up towards the edge to this many screen pixels per second
+  EDGE_PAN_ZONE: 50,
+  EDGE_PAN_SPEED: 800,
+  // The dot grid: the screen spacing (px) of the dots at the start of each zoom level, their radius (px),
+  // and how much the dots grow halfway between levels (0.4 = 40% bigger)
+  DOT_SPACING: 32,
+  DOT_RADIUS: 1.5,
+  DOT_GROWTH: 0.4,
 };
 
 export const FRIEND_REQUEST_ERRORS = {

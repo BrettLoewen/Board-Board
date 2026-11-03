@@ -27,6 +27,50 @@ function scale(): number {
   return board.camera.scale;
 }
 
+// While the card is dragged, the pointer's last position (in client pixels) and the animation frame that
+// pans the board when the pointer is near the viewport's edge
+let dragPointer = { x: 0, y: 0 };
+let edgePanFrame = 0;
+let lastEdgePanTime = 0;
+
+// How strongly to pan towards an edge: 0 outside the edge zone, rising to 1 at the edge (and beyond it)
+function edgeStrength(distanceToEdge: number): number {
+  return Math.min(1, Math.max(0, (BOARD.EDGE_PAN_ZONE - distanceToEdge) / BOARD.EDGE_PAN_ZONE));
+}
+
+// Pan the board each frame while the dragged card's pointer is near the viewport's edge.
+// The card is carried along so it stays under the pointer, and the board grows to make room.
+function edgePanStep(time: number): void {
+  // Time since the last frame in seconds, so the speed doesn't depend on the frame rate
+  const elapsed = lastEdgePanTime ? (time - lastEdgePanTime) / 1000 : 0;
+  lastEdgePanTime = time;
+
+  const viewportRect = cardElement.value?.closest(".board-viewport")?.getBoundingClientRect();
+  if (viewportRect && elapsed) {
+    // Positive means "pan to see more to the right/bottom"
+    const x =
+      edgeStrength(viewportRect.right - dragPointer.x) -
+      edgeStrength(dragPointer.x - viewportRect.left);
+    const y =
+      edgeStrength(viewportRect.bottom - dragPointer.y) -
+      edgeStrength(dragPointer.y - viewportRect.top);
+
+    // panBy moves the board's content, so it moves the opposite way to the view
+    const distance = BOARD.EDGE_PAN_SPEED * elapsed;
+    if ((x || y) && board.edgePan(props.cardId, -x * distance, -y * distance)) {
+      throttledPersist();
+    }
+  }
+
+  edgePanFrame = requestAnimationFrame(edgePanStep);
+}
+
+function stopEdgePan(): void {
+  cancelAnimationFrame(edgePanFrame);
+  edgePanFrame = 0;
+  lastEdgePanTime = 0;
+}
+
 // Setup interact.js to drag and resize the card.
 // interact.js reports pointer movement in screen pixels, so every value is divided by the camera's scale
 // to convert it to world units.
@@ -36,13 +80,20 @@ onMounted(() => {
 
   interactable = interact(cardElement.value)
     .draggable({
-      // Only the left mouse button moves cards (the middle button will pan the board)
+      // Only the left mouse button moves cards (the middle button pans the board, even over a card)
       mouseButtons: 1,
       inertia: false,
       listeners: {
+        // Zooming is blocked while a card is being dragged or resized
+        start(event) {
+          board.setCardInteraction(true);
+          dragPointer = { x: event.clientX, y: event.clientY };
+          edgePanFrame = requestAnimationFrame(edgePanStep);
+        },
         move(event) {
           if (!card.value) return;
 
+          dragPointer = { x: event.clientX, y: event.clientY };
           board.updateGeometry(props.cardId, {
             x: card.value.x + event.dx / scale(),
             y: card.value.y + event.dy / scale(),
@@ -50,6 +101,8 @@ onMounted(() => {
           throttledPersist();
         },
         end() {
+          stopEdgePan();
+          board.setCardInteraction(false);
           board.persistCard(props.cardId);
         },
       },
@@ -70,6 +123,10 @@ onMounted(() => {
         }),
       ],
       listeners: {
+        // Zooming is blocked while a card is being dragged or resized
+        start() {
+          board.setCardInteraction(true);
+        },
         move(event) {
           if (!card.value) return;
 
@@ -83,6 +140,7 @@ onMounted(() => {
           throttledPersist();
         },
         end() {
+          board.setCardInteraction(false);
           board.persistCard(props.cardId);
         },
       },
@@ -91,6 +149,7 @@ onMounted(() => {
 
 // Clean up the interaction listeners
 onUnmounted(() => {
+  stopEdgePan();
   interactable?.unset();
 });
 </script>
@@ -120,6 +179,8 @@ onUnmounted(() => {
   user-select: none;
   touch-action: none;
   box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+  /* The board shows a grab cursor for panning, which doesn't apply to cards */
+  cursor: default;
 }
 .board-card:active {
   cursor: move;

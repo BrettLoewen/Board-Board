@@ -3,7 +3,19 @@ import { computed, ref, type Ref } from "vue";
 import { useToast } from "vue-toastification";
 import { supabase } from "@/lib/supabaseClient";
 import { BOARD } from "@/constants";
-import { screenToWorld, type Camera } from "@/utils/camera";
+import {
+  clamp,
+  clampCamera,
+  expandRect,
+  screenToWorld,
+  unionRect,
+  viewRect,
+  zoomAround,
+  type Camera,
+  type Point,
+  type Rect,
+  type Viewport,
+} from "@/utils/camera";
 import type { Tables, TablesInsert, TablesUpdate } from "@/types/database.types";
 
 export type Card = Tables<"cards">;
@@ -27,13 +39,60 @@ export const useBoardStore = defineStore("board", () => {
   // Typed by hand because unwrapping the recursive `Json` content type is too deep for TypeScript
   const cards = ref(new Map()) as Ref<Map<string, Card>>;
 
+  // Set once the board and its cards have been fetched
+  const loaded = ref(false);
+
   // The local view of the board. Never shared with other users.
   const camera = ref<Camera>({ x: 0, y: 0, scale: 1 });
   // The size of the board viewport element in screen pixels (measured by DigitalBoard)
-  const viewport = ref({ w: 0, h: 0 });
+  const viewport = ref<Viewport>({ w: 0, h: 0 });
+  // Whether a card is being dragged or resized. Zooming is blocked while it is, because interact.js
+  // tracks the interaction in screen pixels and zooming would make that stale.
+  const cardInteraction = ref(false);
 
   // The cards as an array, for rendering
   const cardList = computed(() => Array.from(cards.value.values()));
+
+  // The area covered by the cards plus a margin, or null if there are no cards.
+  // Kept separate from the bounds so panning (which changes the camera) doesn't loop over every card.
+  const contentRect = computed<Rect | null>(() => {
+    let rect: Rect | null = null;
+    for (const card of cards.value.values()) {
+      const cardRect = { x: card.x, y: card.y, w: card.width, h: card.height };
+      rect = rect ? unionRect(rect, cardRect) : cardRect;
+    }
+    return rect ? expandRect(rect, BOARD.MARGIN) : null;
+  });
+
+  // The board's starting area, centred on the origin. At least as big as the viewport at 100% zoom.
+  const minBounds = computed<Rect>(() => {
+    const w = Math.max(BOARD.START_SIZE.w, viewport.value.w);
+    const h = Math.max(BOARD.START_SIZE.h, viewport.value.h);
+    return { x: -w / 2, y: -h / 2, w, h };
+  });
+
+  // The area the board should cover: the starting area plus every card (with a margin)
+  const targetBounds = computed<Rect>(() =>
+    contentRect.value ? unionRect(minBounds.value, contentRect.value) : minBounds.value,
+  );
+
+  // The area the camera is allowed to see.
+  // It includes the current view, so the board never shrinks while the shrinking part is on screen.
+  // Once the camera moves away, the next recompute drops that part.
+  const bounds = computed<Rect>(() =>
+    unionRect(targetBounds.value, viewRect(camera.value, viewport.value)),
+  );
+
+  // The furthest the camera can zoom out: far enough for the whole board to fit, but no further
+  const minScale = computed(() => {
+    const { w, h } = viewport.value;
+    const target = targetBounds.value;
+    if (!w || !h) return BOARD.MIN_SCALE;
+    return Math.min(
+      BOARD.MAX_SCALE,
+      Math.max(BOARD.MIN_SCALE, Math.min(w / target.w, h / target.h)),
+    );
+  });
 
   // Load the board and its cards
   async function load(id: string): Promise<void> {
@@ -53,6 +112,8 @@ export const useBoardStore = defineStore("board", () => {
 
     if (cardsResult.error) console.error(cardsResult.error);
     else cards.value = new Map(cardsResult.data.map((card) => [card.id, card]));
+
+    loaded.value = true;
   }
 
   // Clear everything about the open board
@@ -60,7 +121,111 @@ export const useBoardStore = defineStore("board", () => {
     boardId.value = null;
     board.value = null;
     cards.value = new Map();
+    loaded.value = false;
     camera.value = { x: 0, y: 0, scale: 1 };
+    cardInteraction.value = false;
+  }
+
+  // Move the camera by a distance in screen pixels (dragging the board right moves the camera left)
+  function panBy(dx: number, dy: number): void {
+    // Clamp against the bounds as they were before the move.
+    // The bounds include the view, so clamping against the bounds after the move would do nothing.
+    const before = bounds.value;
+    const { x, y, scale } = camera.value;
+    camera.value = clampCamera(
+      { x: x - dx / scale, y: y - dy / scale, scale },
+      before,
+      viewport.value,
+    );
+  }
+
+  // Pan the camera while a card is dragged near the edge of the viewport, carrying the card with it so
+  // it stays under the pointer. Moving the card grows the board (its margin reaches past the view),
+  // which makes room for the next pan, so the board grows only as fast as the pan speed allows.
+  // Returns whether anything moved.
+  function edgePan(cardId: string, dx: number, dy: number): boolean {
+    const card = cards.value.get(cardId);
+    if (!card) return false;
+
+    const before = camera.value;
+    panBy(dx, dy);
+    const movedX = camera.value.x - before.x;
+    const movedY = camera.value.y - before.y;
+    if (!movedX && !movedY) return false;
+
+    updateGeometry(cardId, { x: card.x + movedX, y: card.y + movedY });
+    return true;
+  }
+
+  // Zoom to a new scale, keeping the world point under the given screen point in place
+  function zoomAt(screenPoint: Point, scale: number): void {
+    if (cardInteraction.value) return;
+
+    const before = bounds.value;
+    const newScale = clamp(scale, minScale.value, BOARD.MAX_SCALE);
+    camera.value = clampCamera(
+      zoomAround(camera.value, screenPoint, newScale),
+      before,
+      viewport.value,
+    );
+  }
+
+  // Zoom to a new scale around the centre of the viewport (used by the zoom slider)
+  function zoomToScale(scale: number): void {
+    zoomAt({ x: viewport.value.w / 2, y: viewport.value.h / 2 }, scale);
+  }
+
+  // Record the viewport's new size and keep the camera inside the board
+  function setViewport(size: Viewport): void {
+    const old = viewport.value;
+    viewport.value = size;
+
+    // Keep the world point at the centre of the view in the centre when the window is resized.
+    // Otherwise the top-left corner stays put and the centre drifts, so new cards (which appear at the centre)
+    // would no longer line up with the centre of the board. Skipped for the first measurement (no old size).
+    let cam = camera.value;
+    if (old.w && old.h) {
+      cam = {
+        x: cam.x + (old.w - size.w) / 2 / cam.scale,
+        y: cam.y + (old.h - size.h) / 2 / cam.scale,
+        scale: cam.scale,
+      };
+    }
+
+    // Clamp against the target bounds, because the bounds always contain the view
+    camera.value = clampCamera(cam, targetBounds.value, size);
+  }
+
+  // Show every card (or the origin on an empty board).
+  // Never zooms in past 100%, so a single card doesn't fill the screen.
+  function fitToContent(): void {
+    const { w, h } = viewport.value;
+    if (!w || !h) return;
+
+    const content = contentRect.value;
+    let cam: Camera;
+    if (content) {
+      const scale = clamp(
+        Math.min(w / content.w, h / content.h, 1),
+        minScale.value,
+        BOARD.MAX_SCALE,
+      );
+      // Put the centre of the content in the centre of the viewport
+      cam = {
+        x: content.x + content.w / 2 - w / 2 / scale,
+        y: content.y + content.h / 2 - h / 2 / scale,
+        scale,
+      };
+    } else {
+      cam = { x: -w / 2, y: -h / 2, scale: 1 };
+    }
+
+    camera.value = clampCamera(cam, targetBounds.value, viewport.value);
+  }
+
+  // Mark a card drag or resize as started or ended
+  function setCardInteraction(active: boolean): void {
+    cardInteraction.value = active;
   }
 
   // Create a new card in the centre of the current view.
@@ -173,11 +338,24 @@ export const useBoardStore = defineStore("board", () => {
     boardId,
     board,
     cards,
+    loaded,
     camera,
     viewport,
+    cardInteraction,
     cardList,
+    contentRect,
+    targetBounds,
+    bounds,
+    minScale,
     load,
     reset,
+    panBy,
+    edgePan,
+    zoomAt,
+    zoomToScale,
+    setViewport,
+    fitToContent,
+    setCardInteraction,
     createCard,
     updateGeometry,
     persistCard,

@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, useTemplateRef } from "vue";
+import { computed, onMounted, onUnmounted, ref, useTemplateRef, watch } from "vue";
 import { useBoardStore } from "@/stores/board";
+import { BOARD } from "@/constants";
 
 const board = useBoardStore();
 
@@ -15,27 +16,106 @@ const worldTransform = computed(() => {
   return `translate(${-x * scale}px, ${-y * scale}px) scale(${scale})`;
 });
 
+// The pointer that is panning the board, and where it was last seen
+const panPointerId = ref<number | null>(null);
+let lastPanPoint = { x: 0, y: 0 };
+
+// Start panning on a middle-button drag anywhere, or a left-button drag on empty board.
+// Cards don't stop the event from reaching here (interact.js needs it), so a left-button drag on a card
+// is ignored here and moves the card instead.
+function onPointerDown(event: PointerEvent): void {
+  // Leave the overlay UI (like the zoom control) alone
+  if ((event.target as Element).closest(".board-overlay")) return;
+
+  const isMiddle = event.button === 1;
+  const isLeftOnEmptyBoard =
+    event.button === 0 && !(event.target as Element).closest(".board-card");
+  if (!isMiddle && !isLeftOnEmptyBoard) return;
+
+  // Keep receiving the pointer's events even if it leaves the viewport
+  viewportElement.value?.setPointerCapture(event.pointerId);
+  panPointerId.value = event.pointerId;
+  lastPanPoint = { x: event.clientX, y: event.clientY };
+}
+
+function onPointerMove(event: PointerEvent): void {
+  if (event.pointerId !== panPointerId.value) return;
+
+  board.panBy(event.clientX - lastPanPoint.x, event.clientY - lastPanPoint.y);
+  lastPanPoint = { x: event.clientX, y: event.clientY };
+}
+
+function onPointerUp(event: PointerEvent): void {
+  if (event.pointerId !== panPointerId.value) return;
+  panPointerId.value = null;
+}
+
+// Stop Windows' middle-click autoscroll from starting
+function onMouseDown(event: MouseEvent): void {
+  if (event.button === 1) event.preventDefault();
+}
+
+// The mouse wheel and trackpad two-finger scroll zoom around the cursor. Pinch (ctrlKey) zooms too.
+function onWheel(event: WheelEvent): void {
+  if (!viewportElement.value) return;
+
+  // Convert the scroll distance to pixels (some devices report lines or pages)
+  let delta = event.deltaY;
+  if (event.deltaMode === WheelEvent.DOM_DELTA_LINE) delta *= 16;
+  else if (event.deltaMode === WheelEvent.DOM_DELTA_PAGE) delta *= board.viewport.h;
+
+  const speed = event.ctrlKey ? BOARD.PINCH_ZOOM_SPEED : BOARD.WHEEL_ZOOM_SPEED;
+  const rect = viewportElement.value.getBoundingClientRect();
+  board.zoomAt(
+    { x: event.clientX - rect.left, y: event.clientY - rect.top },
+    board.camera.scale * Math.exp(-delta * speed),
+  );
+}
+
+// Fit the board to the screen once, when both the cards and the viewport's size are known
+const stopInitialFit = watch(
+  () => board.loaded && board.viewport.w > 0,
+  (ready) => {
+    if (!ready) return;
+    board.fitToContent();
+    stopInitialFit();
+  },
+);
+
 onMounted(() => {
   if (!viewportElement.value) return;
 
   // Keep the store's viewport size up to date (used to find the centre of the view, among other things)
   resizeObserver = new ResizeObserver(([entry]) => {
     if (!entry) return;
-    board.viewport = { w: entry.contentRect.width, h: entry.contentRect.height };
+    board.setViewport({ w: entry.contentRect.width, h: entry.contentRect.height });
   });
   resizeObserver.observe(viewportElement.value);
 });
 
 onUnmounted(() => {
   resizeObserver?.disconnect();
+  stopInitialFit();
 });
 </script>
 
 <template>
-  <div class="board-viewport" ref="viewport-element">
+  <div
+    class="board-viewport"
+    :class="{ panning: panPointerId !== null }"
+    ref="viewport-element"
+    @pointerdown="onPointerDown"
+    @pointermove="onPointerMove"
+    @pointerup="onPointerUp"
+    @pointercancel="onPointerUp"
+    @mousedown="onMouseDown"
+    @wheel.prevent="onWheel"
+  >
+    <BoardDots />
     <div class="board-world" :style="{ transform: worldTransform }">
       <BaseCard v-for="card in board.cardList" :key="card.id" :card-id="card.id" />
     </div>
+    <ZoomControl />
   </div>
 </template>
 
@@ -46,6 +126,12 @@ onUnmounted(() => {
   min-height: 0;
   width: 100%;
   overflow: hidden;
+  user-select: none;
+  touch-action: none;
+  cursor: grab;
+}
+.board-viewport.panning {
+  cursor: grabbing;
 }
 
 .board-world {

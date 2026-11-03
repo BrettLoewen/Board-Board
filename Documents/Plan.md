@@ -47,17 +47,18 @@ It is a guideline, not a contract. When an implementation finds a better approac
 | Max zoom-out (B4)    | At maximum zoom-out the **whole board always fits**. On a tall or wide board, the view extends past the bounds on the shorter axis (just more dots) and stays centred on that axis (3.3).                                                                                                                       |
 | Shape choice (S2)    | The toolbar creates a default shape (square), and the shape is changed afterwards from the right-click menu, as in the prototype.                                                                                                                                                                                |
 | Busy guard           | The basic-board branch already **refuses a drag on a card someone else is holding**, using presence holds, without any visual indicator. Lock visuals come with the collaboration branch.                                                                                                                       |
+| Pan input (B2)       | Left-drag on **empty board** pans when the Select tool is active. **Middle-drag pans in any tool**, including over cards. Left-drag on a card moves the card. (Was A1.) |
+| Camera on open (B4)  | Fit content bounds plus margin into the viewport, **capped at 100% zoom**. An empty board opens centred on the origin at 100%. The camera is not persisted. (Was A6.) |
+| Edge auto-pan        | **In scope** (was A7, not in scope). Dragging a card within 50 px of the viewport edge pans the camera that way (up to 800 px/s) and carries the card with it, so the board grows as the card moves into the margin. Drag only: resizing near the edge does not pan, because interact's resize rect is in screen pixels. |
+| Zoom input           | Clicking the zoom percentage turns it into a text field. Enter or blur applies it (clamped to the zoom range), Escape cancels. |
 
 ### 1.2 Defaults assumed by this plan (_unconfirmed_, ask before relying on them)
 
 | #  | Topic                       | Assumed default                                                                                                                                                                                         | Why                                                                                         |
 | -- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| A1 | Pan input (B2)              | Left-drag on **empty board** pans when the Select tool is active. **Middle-drag pans in any tool.** Left-drag on a card moves the card.                                                                 | Matches FigJam. B2 says "click and drag", which would conflict with the Draw tool otherwise. |
 | A3 | Note editing vs dragging    | Single click selects, drag moves, and **double-click enters text edit mode**. While editing, drags inside the textarea select text instead of moving the card, and the frame and edges can still move it. | Today dragging the textarea moves the card, which makes text selection impossible.          |
 | A4 | Card colours (N3, S3, D3)   | A fixed **palette of named colours**, each with a light-mode and a dark-mode value, plus `auto` (a neutral that follows the colour mode). Stored by name, not hex.                                       | Chosen colours also stay readable in both modes. A free hex picker can be added later.      |
 | A5 | Note text colour            | `auto` text colour picks black or white for contrast with the card colour. The user can still override it with a palette colour.                                                                       | N3 says text colour can be chosen, and `auto` keeps the defaults readable.                  |
-| A6 | Camera on open (B4)         | Fit content bounds plus margin into the viewport, **capped at 100% zoom**. An empty board opens centred on the origin at 100%. The camera is not persisted.                                                | A single card should not fill the screen at 400%.                                           |
-| A7 | Edge auto-pan               | **Not in scope.** Dragging a card to the viewport edge does not scroll the camera.                                                                                                                       | Not in the Requirements. It would be a nice later addition (Section 10.3).                  |
 | A8 | User colour (C4)            | Derived deterministically from the user id (a hash into a ~12-colour palette). Not stored and not user-pickable.                                                                                         | Every client computes the same colour with no schema change. Collisions are possible.       |
 | A9 | Note auto-grow              | A note **grows taller** when its text overflows (as in the prototype), but only for the holder while editing. The growth is a normal geometry change.                                                   | Avoids hidden text. Never shrinks automatically.                                             |
 
@@ -149,7 +150,7 @@ The camera lives in the board store (Section 4.5): `{ x, y, scale }`. It is **lo
 | Middle-drag anywhere                        | Pan, in every tool.                                                                                                                             |
 | Wheel / pinch                               | Zoom around the cursor: `scale *= exp(-deltaY * k)`. Normalise `deltaMode` (lines × 16, pages × viewport height). Use a larger `k` for `ctrlKey` (pinch) events, whose deltas are small. `@wheel.prevent` with `{ passive: false }`. |
 | Zoom slider (top corner)                    | A Nuxt UI `USlider` on a **logarithmic** mapping (`value = log(scale)`), zooming around the viewport centre. Optional extras: a % label, +/− buttons and a "Fit" button that reruns B4. |
-| Window resize                               | Recompute the minimum bounds (3.2) and re-clamp.                                                                                                |
+| Window resize                               | Keep the world point at the view's centre in the centre (otherwise the centre drifts and new cards appear off the board's centre), recompute the minimum bounds (3.2) and re-clamp. |
 
 Zooming around a point keeps that world point under the cursor:
 
@@ -335,7 +336,7 @@ Components read from the store and call its actions. `Card.vue` today copies the
 | Coordinates                    | Cards only know world units. The camera conversion happens only in `camera.ts` helpers and interact listeners (÷ scale).                                                                            |
 | Bounds                         | Any geometry change, local or remote, re-derives `contentRect`, then `bounds`, then `minScale`. The camera is re-clamped **only on camera input or viewport resize**, never because a card moved. Remote activity never moves your camera. |
 | Creation                       | At the view centre (3.5), or from the stroke (4.4).                                                                                                                                                 |
-| Zoom during an interaction     | Allowed. Interact listeners read the current scale on every event.                                                                                                                                 |
+| Zoom during an interaction     | Blocked while a card is being dragged or resized (2.3), because interact's start rect is in screen pixels. Interact listeners still read the current scale on every event.                                                                                                                                 |
 | Selection                      | A single selected card id in the store, used for the focus outline, keyboard delete and the context menu. Selection is local and not broadcast (locks are what others see).                         |
 
 ---
@@ -633,7 +634,7 @@ C1 (sharing with friends) **already exists** through `shared_boards` and the Sha
 
 ### 10.3 Possible later improvements (not in Requirements)
 
-Edge auto-pan while dragging (A7), multi-select and group move, undo/redo (it would sit on top of the store actions and needs the lock rules), off-screen cursor indicators, keyboard zoom shortcuts, a "follow user" view, a free colour picker, and touch support (pointer events are used throughout, so this is mostly about gesture handling).
+Multi-select and group move, undo/redo (it would sit on top of the store actions and needs the lock rules), off-screen cursor indicators, keyboard zoom shortcuts, a "follow user" view, a free colour picker, and touch support (pointer events are used throughout, so this is mostly about gesture handling).
 
 ---
 
