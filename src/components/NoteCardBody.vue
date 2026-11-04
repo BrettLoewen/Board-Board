@@ -62,10 +62,11 @@ function caretOffsetAt(point: Point): number | null {
 
 // Grow the note if its text has run past the bottom.
 // The textarea sits inside the scaled board, so its pixel sizes are already in world units.
+// An empty note never grows: its scroll height would be the placeholder's, which can overflow at big text sizes.
 async function growToFit(): Promise<void> {
   await nextTick();
   const textarea = textareaElement.value;
-  if (textarea && textarea.scrollHeight > textarea.clientHeight) {
+  if (textarea && textarea.value && textarea.scrollHeight > textarea.clientHeight) {
     emit("grow", textarea.scrollHeight - textarea.clientHeight);
   }
 }

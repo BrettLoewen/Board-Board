@@ -592,6 +592,13 @@ A card held by someone else renders with a border in the holder's colour and a s
      - Deleting a card and the right-click menu's one-off changes (colour, size, layer, bring-to-front) are refused while another client holds the card, rather than taking a brief hold of their own.
      - Not done yet: receivers don't interpolate between geometry broadcasts (6.2), and there's no "reconnecting" state on cards (6.5). Both are visual, so they fit the Collaboration branch.
 5. **Tests** (Section 9.5).
+   - **As built:** `boardCamera.spec.ts`, `noteCard.spec.ts` and `boardCollaboration.spec.ts`, with the 9.5 helpers in `e2e/utils.ts` (plus `cardWorldPosition`). The collaboration tests cover live moves, typing, colours and deletes; refused edits and drags on a held note; the 10 s idle release; simultaneous grabs converging; catching up after going offline; and leaving on unshare or delete. Lock visuals and cursors are left to the Collaboration branch.
+   - Writing them found four bugs, now fixed:
+     - A late database `INSERT`/`UPDATE` event could bring back a card that had just been deleted. The store now remembers deleted card ids.
+     - Deleting (or writing) a card straight after creating it could reach the database before its insert. Deletes and writes now wait for the insert.
+     - In a simultaneous grab, a client could judge the contest before its own grab came back through presence, so both clients let go. Clients now always include their own current hold.
+     - The client that lost a grab could get stuck on an older state. It now forgets its own rev so every change from the winner applies.
+   - Also fixed: an empty note no longer grows to fit its placeholder at large text sizes.
 
 ### 9.2 Shapes branch (S1–S3)
 

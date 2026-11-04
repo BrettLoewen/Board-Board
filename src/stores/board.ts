@@ -102,10 +102,13 @@ export const useBoardStore = defineStore("board", () => {
   const lostHold = ref<{ cardId: string; at: number } | null>(null);
   // When this client joined the board (shared through presence)
   let joinedAt = 0;
-  // Cards created here whose insert hasn't returned yet, and cards deleted here whose delete hasn't returned yet.
-  // A refetch mustn't remove the first or bring back the second.
-  const pendingInserts = new Set<string>();
-  const pendingDeletes = new Set<string>();
+  // Cards created here whose insert hasn't returned yet, and the insert itself. A refetch mustn't remove them,
+  // and writes and deletes for them wait for the insert (otherwise they could reach the database first and miss).
+  const pendingInserts = new Map<string, Promise<unknown>>();
+  // Every card deleted while the board has been open, here or by someone else.
+  // Database events arrive a little after the change that caused them, so an INSERT or UPDATE event can turn up
+  // after its card was already deleted. Those events must not bring the card back. (Card ids are never reused.)
+  const deletedCardIds = new Set<string>();
   // Cards changed here that haven't been written since
   const dirtyCards = new Set<string>();
 
@@ -227,7 +230,7 @@ export const useBoardStore = defineStore("board", () => {
     holdChanged = false;
     lostHold.value = null;
     pendingInserts.clear();
-    pendingDeletes.clear();
+    deletedCardIds.clear();
     dirtyCards.clear();
   }
 
@@ -396,10 +399,12 @@ export const useBoardStore = defineStore("board", () => {
     });
     select(insert.id);
 
-    // Tell everyone else straight away, then write the card to the database
-    pendingInserts.add(insert.id);
+    // Tell everyone else straight away, then write the card to the database.
+    // (The query is wrapped in a promise so it can be awaited more than once without sending it again.)
     channel?.send(REALTIME.EVENTS.CARD_CREATE, cards.value.get(insert.id)!);
-    const { error } = await supabase.from("cards").insert(insert);
+    const inserting = (async () => supabase.from("cards").insert(insert))();
+    pendingInserts.set(insert.id, inserting);
+    const { error } = await inserting;
     pendingInserts.delete(insert.id);
 
     // If the insert failed, take the card back everywhere
@@ -417,15 +422,16 @@ export const useBoardStore = defineStore("board", () => {
     const card = cards.value.get(id);
     if (!card || isHeldByOther(id)) return;
 
-    pendingDeletes.add(id);
     removeLocally(id);
     channel?.send(REALTIME.EVENTS.CARD_DELETE, { id });
 
+    // A card deleted straight after being created must wait for its insert, or the delete would find nothing
+    await pendingInserts.get(id);
     const { error } = await supabase.from("cards").delete().eq("id", id);
-    pendingDeletes.delete(id);
 
     if (error) {
       console.error(error);
+      deletedCardIds.delete(id);
       cards.value.set(id, card);
       channel?.send(REALTIME.EVENTS.CARD_CREATE, card);
       toast.error("Could not delete the card!");
@@ -434,6 +440,7 @@ export const useBoardStore = defineStore("board", () => {
 
   // Remove a card from this client only (it was deleted, here or by someone else)
   function removeLocally(id: string): void {
+    deletedCardIds.add(id);
     cards.value.delete(id);
     dirtyCards.delete(id);
     if (editingCardId.value === id) editingCardId.value = null;
@@ -494,6 +501,9 @@ export const useBoardStore = defineStore("board", () => {
   // Every write also carries every field the user can change, not just the one that changed: if an older write
   // is skipped, the newer one that replaced it must not leave the older write's change behind.
   async function persistCard(id: string, retry = true): Promise<void> {
+    // A card changed straight after being created must wait for its insert, or the write would find nothing
+    await pendingInserts.get(id);
+
     const card = cards.value.get(id);
     if (!card || isHeldByOther(id)) return;
 
@@ -637,13 +647,18 @@ export const useBoardStore = defineStore("board", () => {
 
   // Share this client's presence (who it is, and which card it holds)
   function trackPresence(): void {
-    channel?.track({
+    channel?.track(myPresence());
+  }
+
+  // This client's presence, as it is right now
+  function myPresence(): BoardPresence {
+    return {
       clientId,
       userId: auth.user?.id ?? "",
       username: auth.profile?.username ?? "",
       joinedAt,
       hold: myHold.value,
-    });
+    };
   }
 
   // Grab a card to move, resize or edit it. Returns false (and grabs nothing) if someone else holds it.
@@ -686,8 +701,7 @@ export const useBoardStore = defineStore("board", () => {
   }
 
   // Another client won a card this client had just grabbed (both grabbed it at nearly the same time).
-  // Stop changing it, let go, and go back to the card as it is in the database.
-  // The winner's changes are applied from now on, because this client no longer holds it.
+  // Stop changing it, let go, and follow the winner from now on.
   async function loseHold(id: string): Promise<void> {
     myHold.value = null;
     holdChanged = false;
@@ -696,9 +710,15 @@ export const useBoardStore = defineStore("board", () => {
     lostHold.value = { cardId: id, at: Date.now() };
     trackPresence();
 
+    // This client's rev counted its own changes, which lost. Forget it, so every change from the winner applies,
+    // including any that arrive while the card is being reloaded below.
+    const card = cards.value.get(id);
+    if (card) card.rev = -1;
+
+    // Catch up with the database, unless the winner's changes have already overtaken it
     const { data } = await supabase.from("cards").select().eq("id", id).limit(1);
     const row = data?.[0];
-    if (row && !isHolding(id)) cards.value.set(id, row);
+    if (row) applyRemote(id, row);
   }
 
   //============ Sharing changes ============
@@ -725,9 +745,12 @@ export const useBoardStore = defineStore("board", () => {
     Object.assign(card, fields);
   }
 
-  // A card arrived from someone else or from the database: add it if it's new, or apply it if it's newer
-  function upsertRemote(row: Card): void {
-    if (pendingDeletes.has(row.id)) return;
+  // A card arrived from the database or from someone else: add it if it's new, or apply it if it's newer.
+  // The database never brings back a deleted card (its events can arrive after the delete). Another client can,
+  // when it restores a card whose delete failed.
+  function upsertRemote(row: Card, fromClient = false): void {
+    if (fromClient) deletedCardIds.delete(row.id);
+    else if (deletedCardIds.has(row.id)) return;
     if (cards.value.has(row.id)) applyRemote(row.id, row);
     else cards.value.set(row.id, row);
   }
@@ -777,19 +800,23 @@ export const useBoardStore = defineStore("board", () => {
       applyRemote(message.id, message),
     onContent: (message: Partial<Card> & { id: string; rev: number }) =>
       applyRemote(message.id, message),
-    onCreate: upsertRemote,
+    onCreate: (card: Card) => upsertRemote(card, true),
     onDelete: (id: string) => {
       if (!pendingInserts.has(id)) removeLocally(id);
     },
-    onCommitted: upsertRemote,
+    onCommitted: (card: Card) => upsertRemote(card),
     onCommittedDelete: removeLocally,
     onBoardDeleted: () => leaveBoard("This board was deleted."),
     onAccessRevoked: (userId: string) => {
       if (userId === auth.user?.id) leaveBoard("You no longer have access to this board.");
     },
     onPresence: (list: BoardPresence[]) => {
-      presences.value = list;
-      lockByCardId.value = lockResolver.update(list);
+      // Work out the locks with this client's own hold as it is right now. A presence update can arrive with
+      // another client's grab before this client's own grab has come back from the server. Judging the contest
+      // from that alone would make this client let go of a card it actually won.
+      const others = list.filter((presence) => presence.clientId !== clientId);
+      presences.value = [...others, myPresence()];
+      lockByCardId.value = lockResolver.update(presences.value);
 
       // If someone else won the card this client is holding, let go of it
       const hold = myHold.value;
