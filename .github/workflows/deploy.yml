@@ -142,10 +142,19 @@ jobs:
         uses: actions/deploy-pages@v4
 
       # --- Database Deployment ---
+      - name: Set up Node
+        if: matrix.target == 'database'
+        uses: actions/setup-node@v5
+        with:
+          # Matches the Node version used by the test and build jobs.
+          node-version: 24
+          cache: "npm"
+
+      # Install the Supabase CLI version from package-lock.json.
+      # Without this, npx downloads the newest CLI, and v3 can't use the commands below.
       - name: Install Supabase CLI
         if: matrix.target == 'database'
-        run: |
-          curl -fsSL https://cli.supabase.com/install.sh | sh -s -- -b /usr/local/bin
+        run: npm ci
 
       - name: Push Supabase migrations and edge functions to production
         if: matrix.target == 'database'
