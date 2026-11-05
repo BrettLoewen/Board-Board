@@ -5,6 +5,7 @@ import {
   signUp,
   createBoard,
   sendAndAcceptFriendRequest,
+  verifyBoardPageReached,
 } from "./utils";
 
 // For every test...
@@ -58,17 +59,8 @@ test.describe("Board Management", () => {
       // Wait 1 second to guarantee the board page is loaded
       await page.waitForTimeout(1000);
 
-      // ======= NOTE: THIS NEEDS TO BE UPDATED WHEN BOARDS GET IMPLEMENTED ========
-      // Get the contents of the board page and verify them
-      const boardHeader = page
-        .locator("div", {
-          hasText:
-            /^ Board [0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/,
-        })
-        .first();
-      // console.log(await boardHeader.evaluate((el) => el.outerHTML));
-      await expect(boardHeader).toBeVisible();
-      await expect(boardHeader).toHaveCount(1);
+      // Verify the board page was reached and is showing the board's name
+      await verifyBoardPageReached(page, board1Name);
     });
 
     test("Users can rename their Boards", async ({ page }) => {
@@ -499,16 +491,8 @@ test.describe("Board Management", () => {
       // Wait 1 second to guarantee the board page is loaded
       await user2Page.waitForTimeout(1000);
 
-      // ======= NOTE: THIS NEEDS TO BE UPDATED WHEN BOARDS GET IMPLEMENTED ========
-      // Get the contents of the board page and verify them
-      const boardHeader = user2Page
-        .locator("div", {
-          hasText:
-            /^ Board [0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/,
-        })
-        .first();
-      await expect(boardHeader).toBeVisible();
-      await expect(boardHeader).toHaveCount(1);
+      // Verify the board page was reached and is showing the board's name
+      await verifyBoardPageReached(user2Page, board1Name);
     });
 
     test("User can unshare their Boards that they shared to their friends", async ({ browser }) => {

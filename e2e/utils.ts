@@ -1,6 +1,6 @@
 import { execSync, spawnSync, spawn } from "child_process";
 import detect from "detect-port";
-import { Page, expect } from "@playwright/test";
+import { Locator, Page, expect } from "@playwright/test";
 
 // Ensure the backend is setup before any tests are run
 export async function startBackend() {
@@ -326,4 +326,109 @@ export async function createBoard(page: Page, boardName: string) {
   const boardRowButton = page.locator("tr", { hasText: boardName });
   await expect(boardRowButton).toBeVisible();
   await expect(boardRowButton).toHaveCount(1);
+}
+
+export async function verifyBoardPageReached(page: Page, boardName: string) {
+  // Verify the url is for a board page (/board/<board id>)
+  await expect(page).toHaveURL(
+    /\/board\/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/,
+  );
+
+  // Verify the board's name is displayed in the board page's navbar
+  const boardTitle = page.locator("h1.navbar-board-title");
+  await expect(boardTitle).toBeVisible();
+  await expect(boardTitle).toHaveCount(1);
+  await expect(boardTitle).toHaveText(boardName);
+}
+
+export async function openBoard(page: Page, boardName: string) {
+  // Open the board from the dashboard (the whole row is a button)
+  const boardRowButton = page.locator("td", { hasText: boardName });
+  await expect(boardRowButton).toBeVisible();
+  await expect(boardRowButton).toHaveCount(1);
+  await boardRowButton.click();
+
+  // Verify the board page was reached and is showing the board's name
+  await verifyBoardPageReached(page, boardName);
+
+  // Verify the board itself is showing (the board viewport and its zoom control)
+  await expect(page.locator(".board-viewport")).toBeVisible();
+  await expect(page.locator(".zoom-percent")).toBeVisible();
+
+  // Wait 1 second to guarantee the cards are loaded and the board's realtime channel is connected
+  await page.waitForTimeout(1000);
+}
+
+export async function createNote(page: Page): Promise<Locator> {
+  // Create a note with the toolbar's Note button
+  const cards = page.locator(".board-card");
+  const cardCount = await cards.count();
+  const noteButton = page.locator("button.toolbar-note-button");
+  await expect(noteButton).toBeVisible();
+  await expect(noteButton).toHaveCount(1);
+  await noteButton.click();
+
+  // Verify one more card exists, and that the new card is a note (new cards are selected straight away)
+  await expect(cards).toHaveCount(cardCount + 1);
+  const newCard = page.locator(".board-card-selected");
+  await expect(newCard).toHaveCount(1);
+  await expect(newCard.locator(".note-card")).toHaveCount(1);
+
+  // Return a locator that keeps finding this card by its id, even after it is deselected
+  const cardId = await newCard.getAttribute("data-card-id");
+  return page.locator(`.board-card[data-card-id="${cardId}"]`);
+}
+
+export async function cardBox(card: Locator) {
+  // Get a card's position and size on the screen (in screen pixels)
+  const box = await card.boundingBox();
+  expect(box).not.toBeNull();
+  return box!;
+}
+
+export async function cardWorldPosition(card: Locator) {
+  // Get a card's position on the board (in world units, which don't depend on the camera),
+  // read from the transform that positions it in the board's world layer
+  const transform = await card.evaluate((element) => (element as HTMLElement).style.transform);
+  const match = transform.match(/translate\(([-\d.]+)px, ([-\d.]+)px\)/);
+  expect(match).not.toBeNull();
+  return { x: Number(match![1]), y: Number(match![2]) };
+}
+
+export async function dragCard(page: Page, card: Locator, dx: number, dy: number) {
+  // Drag a card from its middle (away from its resize edges) by the given distance in screen pixels
+  const box = await cardBox(card);
+  const startX = box.x + box.width / 2;
+  const startY = box.y + box.height / 2;
+  await page.mouse.move(startX, startY);
+  await page.mouse.down();
+  await page.mouse.move(startX + dx, startY + dy, { steps: 10 });
+  await page.mouse.up();
+}
+
+export async function shareBoardWith(page: Page, friendName: string) {
+  // Open the share modal (from the dashboard, with a single board)
+  const shareModalButton = page.locator("button", { hasText: "Share" });
+  await expect(shareModalButton).toBeVisible();
+  await expect(shareModalButton).toHaveCount(1);
+  await shareModalButton.click();
+
+  // Verify the friend appears in the modal
+  const friendElement = page.locator("div.friend-div", { hasText: friendName });
+  await expect(friendElement).toBeVisible();
+  await expect(friendElement).toHaveCount(1);
+
+  // Share the board to the friend (the first Share button is the dashboard's, behind the modal)
+  const shareButtons = page.locator("button", { hasText: /^Share$/ });
+  await expect(shareButtons).toHaveCount(2);
+  await shareButtons.last().click();
+
+  // Verify the friend is now shown as receiving the board
+  const unshareButton = page.locator("button", { hasText: /^Unshare$/ });
+  await expect(unshareButton).toBeVisible();
+  await expect(unshareButton).toHaveCount(1);
+
+  // Close the share modal and wait for it to be gone
+  await page.keyboard.press("Escape");
+  await expect(page.locator("h2", { hasText: "Share Board" })).not.toBeVisible();
 }

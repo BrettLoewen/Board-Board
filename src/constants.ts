@@ -64,11 +64,80 @@ friendRequestErrorMessageMap.set(
 export const REALTIME = {
   TOPICS: {
     USER: "user:",
+    // Each board's private channel is "board:<board id>"
+    BOARD: "board:",
   },
   EVENTS: {
     FRIEND_REQUEST: "friend_request",
     FRIEND_ACCEPTED: "friend_accepted",
+    // Sent between clients on a board's channel, before changes are written
+    CARD_GEOMETRY: "card:geometry",
+    CARD_CONTENT: "card:content",
+    CARD_CREATE: "card:create",
+    CARD_DELETE: "card:delete",
+    // Sent by database triggers on a board's channel (see the board_realtime migration)
+    DB_INSERT: "INSERT",
+    DB_UPDATE: "UPDATE",
+    DB_DELETE: "DELETE",
+    BOARD_DELETED: "BOARD_DELETED",
+    ACCESS_REVOKED: "ACCESS_REVOKED",
   },
+  // How often (ms) a card's changes are broadcast while it is being moved, resized or typed in.
+  // A final broadcast is always sent when the card is released. Kept in one place so they can be tuned:
+  // the free tier allows roughly 100 messages per second per project, and going over disconnects clients.
+  RATES: {
+    GEOMETRY: 50,
+    CONTENT: 100,
+  },
+  // Two clients can grab the same card before either sees the other's presence. Holds that arrive within
+  // this long (ms) of each other are settled by the earliest grab. A hold arriving later never displaces
+  // a hold everyone has already seen.
+  CONTEST_WINDOW: 1500,
+  // How long (ms) without typing before a note's lock is released (the note stays focused, and the lock is
+  // taken again on the next keystroke if nobody else has taken it)
+  EDIT_IDLE_RELEASE: 10000,
+};
+
+export const BOARD = {
+  // Card positions and sizes are clamped to this on the client.
+  // Matches the `sane_geometry` check on the cards table so local and database state can't differ.
+  MAX_COORDINATE: 99999,
+  // If a card's top-left corner is within this distance of where a new card would go,
+  // the new card is offset diagonally by this amount so repeated clicks don't stack cards exactly
+  CREATE_OFFSET: 20,
+  // How often (ms) a card's geometry is written to the database while it is being dragged or resized.
+  // A final write is always made when the interaction ends.
+  GEOMETRY_WRITE_INTERVAL: 500,
+  // The size of the board before any cards are added (in world units). Centred on the origin.
+  // The board never shrinks below this (or below the viewport's size at 100% zoom).
+  START_SIZE: { w: 3200, h: 2000 },
+  // The space kept around the cards at the board's edge (in world units)
+  MARGIN: 300,
+  // The zoom limits. The actual minimum zoom is higher whenever the whole board fits at a closer zoom.
+  MIN_SCALE: 0.1,
+  MAX_SCALE: 4,
+  // How fast the mouse wheel zooms (per pixel scrolled). Pinch gestures send much smaller deltas, so they use a larger value.
+  WHEEL_ZOOM_SPEED: 0.0015,
+  PINCH_ZOOM_SPEED: 0.01,
+  // Dragging a card within this distance (px) of the viewport's edge pans the board in that direction,
+  // speeding up towards the edge to this many screen pixels per second
+  EDGE_PAN_ZONE: 50,
+  EDGE_PAN_SPEED: 800,
+  // How long (ms) a card can be pressed without moving and still count as a click (which starts editing a note).
+  // Pressing for longer "picks up" the card instead. Moving the pointer starts a drag straight away.
+  CLICK_HOLD_TIME: 300,
+  // How far (px) the pointer must move after pressing a card before it starts dragging (the Windows drag threshold)
+  DRAG_THRESHOLD: 4,
+  // How close (px) to a card's edge a press must be to resize it rather than move it
+  RESIZE_MARGIN: 6,
+  // How long (ms) after the last keystroke a note's text is written to the database.
+  // It is also written straight away when editing stops.
+  CONTENT_WRITE_DELAY: 600,
+  // The dot grid: the screen spacing (px) of the dots at the start of each zoom level, their radius (px),
+  // and how much the dots grow halfway between levels (0.4 = 40% bigger)
+  DOT_SPACING: 32,
+  DOT_RADIUS: 1.5,
+  DOT_GROWTH: 0.4,
 };
 
 export const FRIEND_REQUEST_ERRORS = {

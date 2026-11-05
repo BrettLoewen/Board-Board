@@ -1,2 +1,60 @@
 @import "tailwindcss";
 @import "@nuxt/ui";
+
+/*
+ * Card palette.
+ * --card-<name>       the card's background
+ * --card-<name>-text  readable "auto" text on that background
+ * --card-text-<name>  the colour used when <name> is picked as a text colour (a stronger shade)
+ * Each has a light-mode value (:root) and a dark-mode value (.dark), so cards follow the viewer's colour mode.
+ */
+:root {
+  --card-auto: var(--ui-bg-elevated);
+  --card-auto-text: var(--ui-text-highlighted);
+  --card-yellow: #fef08a;
+  --card-orange: #fed7aa;
+  --card-pink: #fbcfe8;
+  --card-purple: #e9d5ff;
+  --card-blue: #bfdbfe;
+  --card-green: #bbf7d0;
+  --card-gray: #e5e7eb;
+  --card-yellow-text: #1f2937;
+  --card-orange-text: #1f2937;
+  --card-pink-text: #1f2937;
+  --card-purple-text: #1f2937;
+  --card-blue-text: #1f2937;
+  --card-green-text: #1f2937;
+  --card-gray-text: #1f2937;
+  --card-text-auto: var(--ui-text-highlighted);
+  --card-text-yellow: #a16207;
+  --card-text-orange: #c2410c;
+  --card-text-pink: #be185d;
+  --card-text-purple: #7e22ce;
+  --card-text-blue: #1d4ed8;
+  --card-text-green: #15803d;
+  --card-text-gray: #4b5563;
+}
+
+.dark {
+  --card-yellow: #854d0e;
+  --card-orange: #9a3412;
+  --card-pink: #9d174d;
+  --card-purple: #6b21a8;
+  --card-blue: #1e40af;
+  --card-green: #166534;
+  --card-gray: #374151;
+  --card-yellow-text: #f9fafb;
+  --card-orange-text: #f9fafb;
+  --card-pink-text: #f9fafb;
+  --card-purple-text: #f9fafb;
+  --card-blue-text: #f9fafb;
+  --card-green-text: #f9fafb;
+  --card-gray-text: #f9fafb;
+  --card-text-yellow: #fde047;
+  --card-text-orange: #fdba74;
+  --card-text-pink: #f9a8d4;
+  --card-text-purple: #d8b4fe;
+  --card-text-blue: #93c5fd;
+  --card-text-green: #86efac;
+  --card-text-gray: #d1d5db;
+}

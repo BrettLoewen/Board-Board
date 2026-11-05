@@ -6,6 +6,7 @@ import {
   verifyDashboardReached,
   createBoard,
   sendAndAcceptFriendRequest,
+  verifyBoardPageReached,
 } from "./utils";
 
 // For every test...
@@ -226,16 +227,8 @@ test.describe("Authenticated Routes", () => {
     // Wait 1 second to guarantee the board page is loaded
     await page.waitForTimeout(1000);
 
-    // ======= NOTE: THIS NEEDS TO BE UPDATED WHEN BOARDS GET IMPLEMENTED ========
-    // Get the contents of the board page and verify them
-    const boardHeader = page
-      .locator("div", {
-        hasText:
-          /^ Board [0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/,
-      })
-      .first();
-    await expect(boardHeader).toBeVisible();
-    await expect(boardHeader).toHaveCount(1);
+    // Verify the board page was reached and is showing the board's name
+    await verifyBoardPageReached(page, boardName);
   });
 
   test("Users can access boards that were shared with them", async ({ browser }) => {
@@ -306,16 +299,8 @@ test.describe("Authenticated Routes", () => {
     // Wait 1 second to guarantee the board page is loaded
     await user2Page.waitForTimeout(1000);
 
-    // ======= NOTE: THIS NEEDS TO BE UPDATED WHEN BOARDS GET IMPLEMENTED ========
-    // Get the contents of the board page and verify them
-    const boardHeader = user2Page
-      .locator("div", {
-        hasText:
-          /^ Board [0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/,
-      })
-      .first();
-    await expect(boardHeader).toBeVisible();
-    await expect(boardHeader).toHaveCount(1);
+    // Verify the board page was reached and is showing the board's name
+    await verifyBoardPageReached(user2Page, boardName);
   });
 
   test("Users are not able to access boards they don't own or weren't shared", async ({
@@ -353,16 +338,8 @@ test.describe("Authenticated Routes", () => {
     // Wait 1 second to guarantee the board page is loaded
     await user1Page.waitForTimeout(1000);
 
-    // ======= NOTE: THIS NEEDS TO BE UPDATED WHEN BOARDS GET IMPLEMENTED ========
-    // Get the contents of the board page and verify them.
-    const boardHeader = user1Page
-      .locator("div", {
-        hasText:
-          /^ Board [0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/,
-      })
-      .first();
-    await expect(boardHeader).toBeVisible();
-    await expect(boardHeader).toHaveCount(1);
+    // Verify the board page was reached and is showing the board's name
+    await verifyBoardPageReached(user1Page, boardName);
 
     // Go to the board's page without it being shared to user2
     const url = user1Page.url();
