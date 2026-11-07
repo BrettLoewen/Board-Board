@@ -13,6 +13,7 @@
   --card-auto-text: var(--ui-text-highlighted);
   --card-yellow: #fef08a;
   --card-orange: #fed7aa;
+  --card-red: #fecaca;
   --card-pink: #fbcfe8;
   --card-purple: #e9d5ff;
   --card-blue: #bfdbfe;
@@ -20,6 +21,7 @@
   --card-gray: #e5e7eb;
   --card-yellow-text: #1f2937;
   --card-orange-text: #1f2937;
+  --card-red-text: #1f2937;
   --card-pink-text: #1f2937;
   --card-purple-text: #1f2937;
   --card-blue-text: #1f2937;
@@ -28,6 +30,7 @@
   --card-text-auto: var(--ui-text-highlighted);
   --card-text-yellow: #a16207;
   --card-text-orange: #c2410c;
+  --card-text-red: #b91c1c;
   --card-text-pink: #be185d;
   --card-text-purple: #7e22ce;
   --card-text-blue: #1d4ed8;
@@ -38,6 +41,7 @@
 .dark {
   --card-yellow: #854d0e;
   --card-orange: #9a3412;
+  --card-red: #991b1b;
   --card-pink: #9d174d;
   --card-purple: #6b21a8;
   --card-blue: #1e40af;
@@ -45,6 +49,7 @@
   --card-gray: #374151;
   --card-yellow-text: #f9fafb;
   --card-orange-text: #f9fafb;
+  --card-red-text: #f9fafb;
   --card-pink-text: #f9fafb;
   --card-purple-text: #f9fafb;
   --card-blue-text: #f9fafb;
@@ -52,6 +57,7 @@
   --card-gray-text: #f9fafb;
   --card-text-yellow: #fde047;
   --card-text-orange: #fdba74;
+  --card-text-red: #fca5a5;
   --card-text-pink: #f9a8d4;
   --card-text-purple: #d8b4fe;
   --card-text-blue: #93c5fd;

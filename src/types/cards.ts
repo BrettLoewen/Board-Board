@@ -9,6 +9,7 @@ export const PALETTE = [
   "auto",
   "yellow",
   "orange",
+  "red",
   "pink",
   "purple",
   "blue",
