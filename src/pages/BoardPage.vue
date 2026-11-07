@@ -23,10 +23,18 @@ onUnmounted(() => {
 
 <template>
   <div class="board-page">
-    <UDashboardNavbar class="navbar-board">
-      <ULink to="/dashboard" as="button" class="text-primary font-medium text-xl">Dashboard</ULink>
+    <!-- The navbar's toggle opens a sidebar, and this app doesn't have one. Everything goes in the left slot
+         because the navbar hides its centre slot on narrow windows. The title is centred by its own styles. -->
+    <UDashboardNavbar class="navbar-board" :toggle="false">
+      <template #left>
+        <ULink to="/dashboard" as="button" class="text-primary font-medium text-xl">
+          Dashboard
+        </ULink>
 
-      <h1 class="navbar-board-title text-primary font-medium text-xl">{{ board.board?.name }}</h1>
+        <h1 class="navbar-board-title text-primary font-medium text-xl">
+          {{ board.board?.name }}
+        </h1>
+      </template>
     </UDashboardNavbar>
 
     <BoardToolbar />
@@ -59,5 +67,11 @@ onUnmounted(() => {
   position: absolute;
   left: 50%;
   transform: translateX(-50%);
+  /* The title stays centred on the page, so it gets the same space on both sides of it.
+     Leaving room for the Dashboard link on the left stops a long name from running under it. */
+  max-width: calc(100% - 280px);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 </style>

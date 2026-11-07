@@ -734,7 +734,8 @@ onMounted(() => {
 </script>
 
 <template>
-  <UDashboardNavbar class="navbar">
+  <!-- The navbar's toggle opens a sidebar, and this app doesn't have one -->
+  <UDashboardNavbar class="navbar" :toggle="false">
     <template #left>
       <ULink to="/" as="button" class="text-primary font-medium text-2xl">Board Board</ULink>
     </template>
