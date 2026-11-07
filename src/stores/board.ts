@@ -18,9 +18,18 @@ import {
   type Viewport,
 } from "@/utils/camera";
 import type { Json, Tables, TablesInsert, TablesUpdate } from "@/types/database.types";
-import type { CardColor, CardDefaults, CardType, HexColor, NoteDefaults } from "@/types/cards";
+import type {
+  CardColor,
+  CardDefaults,
+  CardType,
+  HexColor,
+  NoteDefaults,
+  ShapeDefaults,
+} from "@/types/cards";
 import { CARD_TYPES } from "@/cards/registry";
+import { asObject } from "@/cards/content";
 import { parseNoteDefaults } from "@/cards/note";
+import { parseShapeContent } from "@/cards/shape";
 import { useAuthStore } from "./auth";
 import { openBoardChannel, type BoardChannel } from "@/realtime/boardChannel";
 import { createLockResolver, type BoardPresence, type Hold, type HoldMode } from "@/realtime/locks";
@@ -39,8 +48,8 @@ export type CustomColorRequest = {
 
 // Read the user's saved card defaults, falling back to the built-in defaults for anything missing or invalid
 function parseCardDefaults(value: Json | undefined): CardDefaults {
-  const note = value && typeof value === "object" && !Array.isArray(value) ? value.note : undefined;
-  return { note: parseNoteDefaults(note) };
+  const saved = asObject(value);
+  return { note: parseNoteDefaults(saved.note), shape: parseShapeContent(saved.shape) };
 }
 
 // Keep a value inside the range the database accepts (see the `sane_geometry` check on cards)
@@ -835,13 +844,26 @@ export const useBoardStore = defineStore("board", () => {
     },
   };
 
-  // Change the colours this user's new notes start with, and save them to their preferences
-  async function setNoteDefaults(patch: Partial<NoteDefaults>): Promise<void> {
+  // Change the options this user's new notes start with, and save them to their preferences
+  function setNoteDefaults(patch: Partial<NoteDefaults>): Promise<void> {
     cardDefaults.value = {
       ...cardDefaults.value,
       note: { ...cardDefaults.value.note, ...patch },
     };
+    return saveCardDefaults();
+  }
 
+  // Change the options this user's new shapes start with, and save them to their preferences
+  function setShapeDefaults(patch: Partial<ShapeDefaults>): Promise<void> {
+    cardDefaults.value = {
+      ...cardDefaults.value,
+      shape: { ...cardDefaults.value.shape, ...patch },
+    };
+    return saveCardDefaults();
+  }
+
+  // Save this user's card defaults to their preferences
+  async function saveCardDefaults(): Promise<void> {
     if (!auth.user) return;
     const { error } = await supabase
       .from("user_preferences")
@@ -911,6 +933,7 @@ export const useBoardStore = defineStore("board", () => {
     startEditing,
     stopEditing,
     setNoteDefaults,
+    setShapeDefaults,
     requestCustomColor,
     closeCustomColor,
     updateGeometry,

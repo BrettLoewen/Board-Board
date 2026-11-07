@@ -382,6 +382,7 @@ onUnmounted(() => {
         'board-card-selected': isSelected,
         'board-card-editing': isEditing,
         'board-card-lifted': lifted || dragging,
+        'board-card-frameless': definition?.frameless,
       }"
       :data-card-id="card.id"
       :style="{
@@ -431,5 +432,9 @@ onUnmounted(() => {
 .board-card-lifted {
   cursor: grabbing;
   box-shadow: 0 10px 24px rgba(0, 0, 0, 0.25);
+}
+/* The body doesn't fill the card's rectangle, so a shadow here would show around nothing */
+.board-card-frameless {
+  box-shadow: none;
 }
 </style>

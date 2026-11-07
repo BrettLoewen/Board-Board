@@ -45,7 +45,7 @@ It is a guideline, not a contract. When an implementation finds a better approac
 | Live drawing         | Other users see an in-progress stroke live (a ghost stroke) before it becomes a card.                                                                                                                                                                                                                        |
 | Wheel (B3)           | The mouse wheel **and** trackpad two-finger scroll always zoom around the cursor. Pinch (`ctrlKey` wheel) zooms too. There is no wheel-to-pan, so panning is click-drag only.                                                                                                                                   |
 | Max zoom-out (B4)    | At maximum zoom-out the **whole board always fits**. On a tall or wide board, the view extends past the bounds on the shorter axis (just more dots) and stays centred on that axis (3.3).                                                                                                                       |
-| Shape choice (S2)    | The toolbar creates a default shape (square), and the shape is changed afterwards from the right-click menu, as in the prototype.                                                                                                                                                                                |
+| Shape choice (S2)    | The toolbar creates the user's default shape (a square until they pick another). A shape is changed from its right-click menu, and right-clicking the toolbar's Shape button picks the next one ahead of time.                                                                                                                                                                                |
 | Busy guard           | The basic-board branch already **refuses a drag on a card someone else is holding**, using presence holds, without any visual indicator. Lock visuals come with the collaboration branch.                                                                                                                       |
 | Pan input (B2)       | Left-drag on **empty board** pans when the Select tool is active. **Middle-drag pans in any tool**, including over cards. Left-drag on a card moves the card. (Was A1.) |
 | Camera on open (B4)  | Fit content bounds plus margin into the viewport, **capped at 100% zoom**. An empty board opens centred on the origin at 100%. The camera is not persisted. (Was A6.) |
@@ -53,7 +53,7 @@ It is a guideline, not a contract. When an implementation finds a better approac
 | Zoom input           | Clicking the zoom percentage turns it into a text field. Enter or blur applies it (clamped to the zoom range), Escape cancels. |
 | Note editing (A3)    | Movement decides, not a timer: moving the pointer 4 px after pressing starts a drag straight away. Releasing within **300 ms** without moving is a click, which enters text edit mode with the cursor where you clicked. Holding still past 300 ms "picks up" the card (it lifts) and releasing doesn't edit. While editing, drags inside the text select text, and the frame around the text still moves the card. Escape, or clicking elsewhere, stops editing. (300 ms is below the usual OS long-press of 400–500 ms but well above a normal click.) |
 | Card colours (A4/A5) | A palette of named colours (auto, yellow, orange, red, pink, purple, blue, green, gray), each with light and dark shades, stored by name. Plus **Custom…**, a colour picker with a hex field, stored as `#rrggbb` (same in both modes). `auto` text picks a readable colour for the card. Picked text colours use a stronger shade of the palette colour. |
-| Card defaults        | New notes use the colours and text size the user **last picked** (saved per card type in `user_preferences.card_defaults`, so shapes and drawings get their own). Before any pick, notes are **green** with auto text at size 16. The toolbar's Note button is drawn in the default colours (the text size doesn't show on it), and right-clicking it changes the defaults ahead of time. |
+| Card defaults        | New notes use the colours and text size the user **last picked** (saved per card type in `user_preferences.card_defaults`, so shapes and drawings get their own). Before any pick, notes are **green** with auto text at size 16. The toolbar's Note button is drawn in the default colours (the text size doesn't show on it), and right-clicking it changes the defaults ahead of time. Shapes work the same way: before any pick they are **green squares**, and the Shape button shows the next shape in its colour. Draw cards will start **green** too. |
 | Note text size       | Chosen from the right-click menu: a field to type any size (6–200, Enter or clicking away applies it), above presets 12–64. Sizes are in world units, so text scales with the zoom. A bigger size grows the note to fit. |
 | Note auto-grow (A9)  | A note **grows taller** when its text overflows, while it is being edited. It never shrinks on its own. |
 
@@ -277,7 +277,7 @@ alter table public.cards alter column type drop default;  -- a client bug must n
 type PaletteColor = "auto" | "yellow" | "pink" | "blue" | "green" | "purple" | "orange" | "gray" | ...; // A4
 
 type NoteContent  = { text: string; color: PaletteColor; textColor: PaletteColor };
-type ShapeContent = { shape: "square" | "triangle" | "circle"; color: PaletteColor };
+type ShapeContent = { shape: "square" | "triangle" | "circle"; color: CardColor };
 type DrawContent  = { color: PaletteColor; thickness: number; strokes: Point[][] }; // normalised 0..1 (4.4)
 
 type Card = Omit<Tables<"cards">, "content"> &
@@ -604,9 +604,17 @@ A card held by someone else renders with a border in the holder's colour and a s
 
 `ShapeCardBody` (SVG `viewBox="0 0 100 100"`, `preserveAspectRatio="none"`, ellipse / polygon / rect filling the box). Toolbar Shape button. Context menu for shape kind and colour. Nothing new in the realtime layer: shapes use the same `card:geometry` and `card:content` events.
 
+- **As built:**
+  - No migration was needed: the `shape` card type already existed, and `content` and `card_defaults` are JSON.
+  - The last shape and colour picked become the defaults for the next shape, as with notes (`card_defaults.shape`).
+  - Shapes can use custom colours as well as the palette, and resize freely, so a square can become a rectangle and a circle an ellipse. The smallest size is 40 x 40.
+  - The registry's `frameless` flag removes the card's rectangular shadow, and the SVG draws a drop shadow that follows the shape.
+  - The whole card rectangle is still the grab area, including the empty corners around a circle or triangle. This keeps the resize edges working.
+  - Tests are in `shapeCard.spec.ts`, plus a two-user test in `boardCollaboration.spec.ts`.
+
 ### 9.3 Draw branch (D1–D3)
 
-The tool state in the store (`select | draw`), toolbar toggle and toolbar options (colour and thickness before drawing), capture, simplify and normalise (4.4), `DrawCardBody`, and changing colour and thickness after drawing via the context menu. Ghost strokes may come here or in the collaboration branch. The events are already defined (6.2).
+The tool state in the store (`select | draw`), toolbar toggle and toolbar options (colour, **green** until the user picks another, and thickness before drawing), capture, simplify and normalise (4.4), `DrawCardBody`, and changing colour and thickness after drawing via the context menu. Ghost strokes may come here or in the collaboration branch. The events are already defined (6.2).
 
 ### 9.4 Collaboration branch (C2–C4) and the eraser (D4)
 

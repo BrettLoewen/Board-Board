@@ -4,6 +4,7 @@ import type { ContextMenuItem } from "@nuxt/ui";
 import { useBoardStore } from "@/stores/board";
 import { colorMenuItems } from "@/cards/colorMenu";
 import { fontSizeMenuItems } from "@/cards/fontSizeMenu";
+import { SHAPE_KINDS, shapeKindMenuItems } from "@/cards/shape";
 import { cardBackground, cardText } from "@/utils/colors";
 
 const board = useBoardStore();
@@ -57,6 +58,43 @@ const noteMenuItems = computed<ContextMenuItem[]>(() => [
     }),
   },
 ]);
+
+// The Shape button is drawn in the colour of the next shape, with that shape as its icon
+const shapeDefaults = computed(() => board.cardDefaults.shape);
+const shapeButtonStyle = computed(() => ({
+  backgroundColor: cardBackground(shapeDefaults.value.color),
+  color: cardText("auto", shapeDefaults.value.color),
+}));
+const shapeButtonIcon = computed(
+  () => SHAPE_KINDS.find((kind) => kind.value === shapeDefaults.value.shape)?.icon ?? "i-ix-shapes",
+);
+
+// Right-clicking the Shape button picks the next shape and its colour ahead of time
+const shapeMenuItems = computed<ContextMenuItem[]>(() => [
+  {
+    label: "Next shape",
+    icon: "i-ix-shapes",
+    children: shapeKindMenuItems({
+      current: shapeDefaults.value.shape,
+      onPick: (shape) => board.setShapeDefaults({ shape }),
+    }),
+  },
+  {
+    label: "Next shape colour",
+    icon: "i-ph-palette",
+    children: colorMenuItems({
+      current: shapeDefaults.value.color,
+      swatch: cardBackground,
+      onPick: (color) => board.setShapeDefaults({ color }),
+      onCustom: () =>
+        board.requestCustomColor({
+          title: "Next shape colour",
+          color: shapeDefaults.value.color,
+          apply: (color) => board.setShapeDefaults({ color }),
+        }),
+    }),
+  },
+]);
 </script>
 
 <template>
@@ -72,10 +110,17 @@ const noteMenuItems = computed<ContextMenuItem[]>(() => [
         <p>Note</p>
       </UButton>
     </CardMenu>
-    <UButton class="toolbar-button flex flex-col gap-0">
-      <UIcon name="i-ix-shapes" class="size-14" />
-      <p>Shape</p>
-    </UButton>
+    <CardMenu :items="shapeMenuItems">
+      <UButton
+        class="toolbar-button toolbar-shape-button flex flex-col gap-0"
+        :style="shapeButtonStyle"
+        title="Add a shape (right-click to change which shape and its colour)"
+        @click="board.createCard('shape')"
+      >
+        <UIcon :name="shapeButtonIcon" class="size-14" />
+        <p>Shape</p>
+      </UButton>
+    </CardMenu>
     <UButton class="toolbar-button">Draw</UButton>
     <UButton class="toolbar-button">Erase</UButton>
   </div>

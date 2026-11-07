@@ -4,15 +4,11 @@ import type { NoteContent, NoteDefaults } from "@/types/cards";
 import type { Card, BoardStore } from "@/stores/board";
 import { cardBackground, cardText, isCardColor } from "@/utils/colors";
 import { colorMenuItems } from "./colorMenu";
+import { asObject } from "./content";
 import { fontSizeMenuItems, isFontSize } from "./fontSizeMenu";
 
 // The options a note starts with before the user has picked any
 export const NOTE_DEFAULTS: NoteDefaults = { color: "green", textColor: "auto", fontSize: 16 };
-
-// Read an object out of a JSON value, or an empty object if it isn't one
-function asObject(value: Json | undefined): { [key: string]: Json | undefined } {
-  return value && typeof value === "object" && !Array.isArray(value) ? value : {};
-}
 
 // Read a note's options (from its content, or from the user's saved defaults),
 // falling back to the built-in defaults for anything missing or invalid

@@ -4,7 +4,9 @@ import type { Json } from "@/types/database.types";
 import type { CardDefaults, CardType } from "@/types/cards";
 import type { Card, BoardStore } from "@/stores/board";
 import NoteCardBody from "@/components/NoteCardBody.vue";
+import ShapeCardBody from "@/components/ShapeCardBody.vue";
 import { newNoteContent, noteMenuItems } from "./note";
+import { shapeMenuItems } from "./shape";
 
 // Everything the board needs to know about one type of card.
 // BaseCard handles everything to do with the board (moving, resizing, selecting, layers, deleting),
@@ -17,6 +19,9 @@ export type CardTypeDefinition = {
   minSize: { width: number; height: number };
   // Whether clicking the card enters edit mode (for example, to type in a note)
   editable: boolean;
+  // Whether the card's body doesn't fill its rectangle (a circle, for example).
+  // BaseCard then draws no rectangular shadow around it, and the body draws its own.
+  frameless: boolean;
   // The content of a new card, from the user's defaults
   newContent: (defaults: CardDefaults) => Json;
   // The type's own items for the card's right-click menu (BaseCard adds the layer and delete items)
@@ -30,7 +35,17 @@ export const CARD_TYPES: Partial<Record<CardType, CardTypeDefinition>> = {
     defaultSize: { width: 200, height: 200 },
     minSize: { width: 80, height: 60 },
     editable: true,
+    frameless: false,
     newContent: (defaults) => newNoteContent(defaults.note),
     menuItems: noteMenuItems,
+  },
+  shape: {
+    body: ShapeCardBody,
+    defaultSize: { width: 200, height: 200 },
+    minSize: { width: 40, height: 40 },
+    editable: false,
+    frameless: true,
+    newContent: (defaults) => ({ ...defaults.shape }),
+    menuItems: shapeMenuItems,
   },
 };

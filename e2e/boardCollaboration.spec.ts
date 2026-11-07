@@ -8,9 +8,12 @@ import {
   shareBoardWith,
   openBoard,
   createNote,
+  createShape,
   cardBox,
   cardWorldPosition,
   dragCard,
+  expectStyle,
+  pickFromMenu,
 } from "./utils";
 
 // For every test...
@@ -106,6 +109,30 @@ test.describe("Board Collaboration", () => {
     // User1 deletes the note, and verify user2 sees it go
     await user1Page.mouse.click(moved.x + 60, moved.y + 60);
     await user1Page.keyboard.press("Escape");
+    await user1Page.keyboard.press("Delete");
+    await expect(user2Page.locator(".board-card")).toHaveCount(0);
+  });
+
+  test("Other users see shapes being created, moved, changed and deleted", async ({ browser }) => {
+    const [user1Page, user2Page] = await openSharedBoard(browser);
+
+    // User1 creates a shape, and verify user2 sees it
+    const shape = await createShape(user1Page);
+    const user2Shape = firstCard(user2Page);
+    await expect(user2Shape.locator(".shape-card")).toHaveAttribute("data-shape", "square");
+
+    // User1 drags the shape, and verify user2 sees it end up in the same place
+    await dragCard(user1Page, shape, 120, 80);
+    const end = await cardWorldPosition(shape);
+    await expect.poll(() => cardWorldPosition(user2Shape)).toEqual(end);
+
+    // User1 changes the shape and its colour, and verify user2 sees both
+    await pickFromMenu(user1Page, shape, "Shape", "Circle");
+    await expect(user2Shape.locator(".shape-card")).toHaveAttribute("data-shape", "circle");
+    await pickFromMenu(user1Page, shape, "Colour", "Pink");
+    await expectStyle(user2Shape.locator(".shape-card"), "fill", "rgb(251, 207, 232)");
+
+    // User1 deletes the shape, and verify user2 sees it go
     await user1Page.keyboard.press("Delete");
     await expect(user2Page.locator(".board-card")).toHaveCount(0);
   });

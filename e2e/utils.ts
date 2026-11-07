@@ -379,6 +379,26 @@ export async function createNote(page: Page): Promise<Locator> {
   return page.locator(`.board-card[data-card-id="${cardId}"]`);
 }
 
+export async function createShape(page: Page): Promise<Locator> {
+  // Create a shape with the toolbar's Shape button
+  const cards = page.locator(".board-card");
+  const cardCount = await cards.count();
+  const shapeButton = page.locator("button.toolbar-shape-button");
+  await expect(shapeButton).toBeVisible();
+  await expect(shapeButton).toHaveCount(1);
+  await shapeButton.click();
+
+  // Verify one more card exists, and that the new card is a shape (new cards are selected straight away)
+  await expect(cards).toHaveCount(cardCount + 1);
+  const newCard = page.locator(".board-card-selected");
+  await expect(newCard).toHaveCount(1);
+  await expect(newCard.locator(".shape-card")).toHaveCount(1);
+
+  // Return a locator that keeps finding this card by its id, even after it is deselected
+  const cardId = await newCard.getAttribute("data-card-id");
+  return page.locator(`.board-card[data-card-id="${cardId}"]`);
+}
+
 export async function cardBox(card: Locator) {
   // Get a card's position and size on the screen (in screen pixels)
   const box = await card.boundingBox();
@@ -431,4 +451,35 @@ export async function shareBoardWith(page: Page, friendName: string) {
   // Close the share modal and wait for it to be gone
   await page.keyboard.press("Escape");
   await expect(page.locator("h2", { hasText: "Share Board" })).not.toBeVisible();
+}
+
+// The CSS properties the card tests read
+type StyleProperty = "backgroundColor" | "color" | "fontSize" | "fill" | "boxShadow";
+
+// Read a CSS property of an element as the browser computed it
+export async function computedStyle(element: Locator, property: StyleProperty) {
+  return element.evaluate((el, prop) => getComputedStyle(el)[prop], property);
+}
+
+// Verify a CSS property of an element, waiting for it to settle (buttons fade between colours)
+export async function expectStyle(element: Locator, property: StyleProperty, expected: string) {
+  await expect.poll(() => computedStyle(element, property)).toBe(expected);
+}
+
+// Open a menu from a right-click on an element, then open one of its submenus
+export async function openSubmenu(page: Page, target: Locator, submenu: string) {
+  const box = await target.boundingBox();
+  await page.mouse.click(box!.x + box!.width / 2, box!.y + box!.height / 2, { button: "right" });
+  const submenuItem = page.getByRole("menuitem", { name: submenu, exact: true });
+  await expect(submenuItem).toBeVisible();
+  await submenuItem.hover();
+}
+
+// Pick an option from a submenu of an element's right-click menu
+export async function pickFromMenu(page: Page, target: Locator, submenu: string, option: string) {
+  await openSubmenu(page, target, submenu);
+  const optionItem = page.getByRole("menuitemcheckbox", { name: option, exact: true });
+  await expect(optionItem).toBeVisible();
+  await optionItem.click();
+  await expect(optionItem).not.toBeVisible();
 }

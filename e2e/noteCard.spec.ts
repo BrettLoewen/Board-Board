@@ -9,6 +9,9 @@ import {
   cardBox,
   cardWorldPosition,
   dragCard,
+  expectStyle,
+  openSubmenu,
+  pickFromMenu,
 } from "./utils";
 
 // For every test...
@@ -24,38 +27,6 @@ test.beforeEach(async ({ page }) => {
 const GREEN = "rgb(187, 247, 208)"; // The default note colour
 const BLUE = "rgb(191, 219, 254)";
 const PINK_TEXT = "rgb(190, 24, 93)";
-
-// Read a CSS property of an element as the browser computed it
-async function computedStyle(element: Locator, property: "backgroundColor" | "color" | "fontSize") {
-  return element.evaluate((el, prop) => getComputedStyle(el)[prop], property);
-}
-
-// Verify a CSS property of an element, waiting for it to settle (buttons fade between colours)
-async function expectStyle(
-  element: Locator,
-  property: "backgroundColor" | "color" | "fontSize",
-  expected: string,
-) {
-  await expect.poll(() => computedStyle(element, property)).toBe(expected);
-}
-
-// Open a menu from a right-click on an element, then open one of its submenus
-async function openSubmenu(page: Page, target: Locator, submenu: string) {
-  const box = await target.boundingBox();
-  await page.mouse.click(box!.x + box!.width / 2, box!.y + box!.height / 2, { button: "right" });
-  const submenuItem = page.getByRole("menuitem", { name: submenu, exact: true });
-  await expect(submenuItem).toBeVisible();
-  await submenuItem.hover();
-}
-
-// Pick an option from a submenu of an element's right-click menu
-async function pickFromMenu(page: Page, target: Locator, submenu: string, option: string) {
-  await openSubmenu(page, target, submenu);
-  const optionItem = page.getByRole("menuitemcheckbox", { name: option, exact: true });
-  await expect(optionItem).toBeVisible();
-  await optionItem.click();
-  await expect(optionItem).not.toBeVisible();
-}
 
 // Click a note (a quick click, which starts editing its text)
 async function clickNote(page: Page, note: Locator, offsetX = 60, offsetY = 40) {

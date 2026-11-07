@@ -36,8 +36,20 @@ export type NoteContent = {
 // The colours a user's new note cards start with (stored in user_preferences.card_defaults.note)
 export type NoteDefaults = Pick<NoteContent, "color" | "textColor" | "fontSize">;
 
+// The shapes a shape card can be
+export type ShapeKind = "square" | "triangle" | "circle";
+
+// The content of a shape card
+export type ShapeContent = {
+  shape: ShapeKind;
+  color: CardColor;
+};
+
+// The options a user's new shape cards start with (stored in user_preferences.card_defaults.shape)
+export type ShapeDefaults = ShapeContent;
+
 // Every option for a user's new cards, per card type (stored in user_preferences.card_defaults)
-export type CardDefaults = { note: NoteDefaults };
+export type CardDefaults = { note: NoteDefaults; shape: ShapeDefaults };
 
 // The card layers, from back to front
 export const LAYERS = [
