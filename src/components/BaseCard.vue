@@ -383,6 +383,7 @@ onUnmounted(() => {
         'board-card-editing': isEditing,
         'board-card-lifted': lifted || dragging,
         'board-card-frameless': definition?.frameless,
+        'board-card-hollow': definition?.hollow,
       }"
       :data-card-id="card.id"
       :style="{
@@ -436,5 +437,11 @@ onUnmounted(() => {
 /* The body doesn't fill the card's rectangle, so a shadow here would show around nothing */
 .board-card-frameless {
   box-shadow: none;
+}
+/* Clicks go through the card to whatever is behind it, except on the parts the body marks as clickable.
+   Once the card is selected (or is being moved), all of it can be grabbed and resized.
+   (!important because the right-click menu's trigger puts an inline `pointer-events: auto` on the card.) */
+.board-card-hollow:not(.board-card-selected, .board-card-lifted) {
+  pointer-events: none !important;
 }
 </style>

@@ -5,6 +5,7 @@ import { useBoardStore } from "@/stores/board";
 import { colorMenuItems } from "@/cards/colorMenu";
 import { fontSizeMenuItems } from "@/cards/fontSizeMenu";
 import { SHAPE_KINDS, shapeKindMenuItems } from "@/cards/shape";
+import { drawOptionMenuItems } from "@/cards/draw";
 import { cardBackground, cardText } from "@/utils/colors";
 
 const board = useBoardStore();
@@ -95,6 +96,34 @@ const shapeMenuItems = computed<ContextMenuItem[]>(() => [
     }),
   },
 ]);
+
+// The Draw button turns the Draw tool on and off, and is drawn in the next line's colour
+const drawing = computed(() => board.tool === "draw");
+const drawDefaults = computed(() => board.cardDefaults.draw);
+const drawButtonStyle = computed(() => ({
+  backgroundColor: cardBackground(drawDefaults.value.color),
+  color: cardText("auto", drawDefaults.value.color),
+}));
+
+// Right-clicking the Draw button picks the next line's colour and thickness ahead of time
+const drawMenuItems = computed<ContextMenuItem[]>(() =>
+  drawOptionMenuItems({
+    labels: {
+      color: "Next line colour",
+      thickness: "Next line thickness",
+      customTitle: "Next line colour",
+    },
+    current: drawDefaults.value,
+    board,
+    onPick: (patch) => board.setDrawDefaults(patch),
+  }),
+);
+
+// Adding a note or shape goes back to the Select tool, so the new card can be used straight away
+function createCard(type: "note" | "shape"): void {
+  board.setTool("select");
+  board.createCard(type);
+}
 </script>
 
 <template>
@@ -104,7 +133,7 @@ const shapeMenuItems = computed<ContextMenuItem[]>(() => [
         class="toolbar-button toolbar-note-button flex flex-col gap-0"
         :style="noteButtonStyle"
         title="Add a note (right-click to change its colour)"
-        @click="board.createCard('note')"
+        @click="createCard('note')"
       >
         <UIcon name="i-ph-note" class="size-14" />
         <p>Note</p>
@@ -115,13 +144,25 @@ const shapeMenuItems = computed<ContextMenuItem[]>(() => [
         class="toolbar-button toolbar-shape-button flex flex-col gap-0"
         :style="shapeButtonStyle"
         title="Add a shape (right-click to change which shape and its colour)"
-        @click="board.createCard('shape')"
+        @click="createCard('shape')"
       >
         <UIcon :name="shapeButtonIcon" class="size-14" />
         <p>Shape</p>
       </UButton>
     </CardMenu>
-    <UButton class="toolbar-button">Draw</UButton>
+    <CardMenu :items="drawMenuItems">
+      <UButton
+        class="toolbar-button toolbar-draw-button flex flex-col gap-0"
+        :class="{ 'toolbar-button-active': drawing }"
+        :style="drawButtonStyle"
+        :aria-pressed="drawing"
+        title="Draw lines on the board (right-click to change the line's colour and thickness, Escape to stop)"
+        @click="board.setTool(drawing ? 'select' : 'draw')"
+      >
+        <UIcon name="i-ph-pencil-simple" class="size-14" />
+        <p>Draw</p>
+      </UButton>
+    </CardMenu>
     <UButton class="toolbar-button">Erase</UButton>
   </div>
 </template>
@@ -151,5 +192,10 @@ const shapeMenuItems = computed<ContextMenuItem[]>(() => [
 }
 .toolbar-button:hover {
   cursor: pointer;
+}
+/* The tool that is turned on (such as Draw) */
+.toolbar-button-active {
+  outline: 3px solid var(--ui-primary);
+  outline-offset: 2px;
 }
 </style>

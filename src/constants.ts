@@ -75,6 +75,10 @@ export const REALTIME = {
     CARD_CONTENT: "card:content",
     CARD_CREATE: "card:create",
     CARD_DELETE: "card:delete",
+    // A line being drawn, shown to everyone else as it is drawn (a "ghost" line), until its card arrives
+    STROKE_PREVIEW: "stroke:preview",
+    STROKE_END: "stroke:end",
+    STROKE_CANCEL: "stroke:cancel",
     // Sent by database triggers on a board's channel (see the board_realtime migration)
     DB_INSERT: "INSERT",
     DB_UPDATE: "UPDATE",
@@ -88,7 +92,14 @@ export const REALTIME = {
   RATES: {
     GEOMETRY: 50,
     CONTENT: 100,
+    // New points of a line being drawn
+    STROKE: 50,
   },
+  // A ghost line is removed this long (ms) after its last points arrive, in case the person drawing it left
+  // without finishing it (lines whose card arrives are removed straight away)
+  GHOST_STROKE_TIMEOUT: 10000,
+  // After a ghost line is finished, how long (ms) to keep showing it while its card is on the way
+  GHOST_STROKE_END_DELAY: 1500,
   // Two clients can grab the same card before either sees the other's presence. Holds that arrive within
   // this long (ms) of each other are settled by the earliest grab. A hold arriving later never displaces
   // a hold everyone has already seen.
@@ -138,6 +149,23 @@ export const BOARD = {
   DOT_SPACING: 32,
   DOT_RADIUS: 1.5,
   DOT_GROWTH: 0.4,
+};
+
+export const DRAW = {
+  // Space (world units) around a drawn line inside its card, on top of half the line's thickness.
+  // It gives thin lines enough card to grab and to resize from.
+  PADDING: 8,
+  // How far (world units) past each side of a line a click still counts as clicking the line.
+  // Kept below PADDING so the clickable area stays inside the card.
+  HIT_MARGIN: 6,
+  // How far (screen px) a point can stray from a straight line before simplifying keeps it.
+  // Converted to world units with the zoom at the time the line is finished.
+  SIMPLIFY_TOLERANCE: 0.5,
+  // The most points a line keeps (more are simplified away), so its card stays well inside the size limits
+  // of the database's `content_size` check and of realtime messages
+  MAX_POINTS: 2000,
+  // Points are stored as fractions of the card's drawing area, rounded to this many decimal places
+  POINT_PRECISION: 4,
 };
 
 export const FRIEND_REQUEST_ERRORS = {

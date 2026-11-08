@@ -1,5 +1,5 @@
 import { defineStore } from "pinia";
-import { computed, ref, type Ref } from "vue";
+import { computed, ref, shallowRef, triggerRef, type Ref } from "vue";
 import { useToast } from "vue-toastification";
 import { useRouter } from "vue-router";
 import { supabase } from "@/lib/supabaseClient";
@@ -19,19 +19,27 @@ import {
 } from "@/utils/camera";
 import type { Json, Tables, TablesInsert, TablesUpdate } from "@/types/database.types";
 import type {
+  BoardTool,
   CardColor,
   CardDefaults,
   CardType,
+  DrawDefaults,
   HexColor,
   NoteDefaults,
   ShapeDefaults,
 } from "@/types/cards";
 import { CARD_TYPES } from "@/cards/registry";
 import { asObject } from "@/cards/content";
+import { drawCardFromStroke, parseDrawDefaults } from "@/cards/draw";
 import { parseNoteDefaults } from "@/cards/note";
 import { parseShapeContent } from "@/cards/shape";
+import { throttle } from "@/utils/throttle";
 import { useAuthStore } from "./auth";
-import { openBoardChannel, type BoardChannel } from "@/realtime/boardChannel";
+import {
+  openBoardChannel,
+  type BoardChannel,
+  type StrokePreviewMessage,
+} from "@/realtime/boardChannel";
 import { createLockResolver, type BoardPresence, type Hold, type HoldMode } from "@/realtime/locks";
 
 export type Card = Tables<"cards">;
@@ -49,8 +57,15 @@ export type CustomColorRequest = {
 // Read the user's saved card defaults, falling back to the built-in defaults for anything missing or invalid
 function parseCardDefaults(value: Json | undefined): CardDefaults {
   const saved = asObject(value);
-  return { note: parseNoteDefaults(saved.note), shape: parseShapeContent(saved.shape) };
+  return {
+    note: parseNoteDefaults(saved.note),
+    shape: parseShapeContent(saved.shape),
+    draw: parseDrawDefaults(saved.draw),
+  };
 }
+
+// A line being drawn, in world units: by this client, or by someone else (a "ghost" line)
+export type Stroke = { id: string; color: CardColor; thickness: number; points: Point[] };
 
 // Keep a value inside the range the database accepts (see the `sane_geometry` check on cards)
 function clampCoordinate(value: number): number {
@@ -94,6 +109,19 @@ export const useBoardStore = defineStore("board", () => {
 
   // Set while the custom colour picker is open
   const customColorRequest = ref<CustomColorRequest | null>(null);
+
+  //============ Drawing state ============
+  // What a left-button drag on the board does. Local to this user.
+  const tool = ref<BoardTool>("select");
+  // The line this client is drawing, and other people's lines as they draw them (by stroke id, which becomes
+  // the card's id). Lines can have thousands of points, so they aren't deeply reactive: changes are announced
+  // with triggerRef instead.
+  const activeStroke = shallowRef<Stroke | null>(null);
+  const ghostStrokes = shallowRef(new Map<string, Stroke>());
+  // How many of the active line's points have been shared so far
+  let strokeSentCount = 0;
+  // Removes each ghost line that stops getting points (its drawer may have left)
+  const ghostTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
   //============ Collaboration state ============
   // The board's realtime channel, while the board is open
@@ -241,6 +269,11 @@ export const useBoardStore = defineStore("board", () => {
     pendingInserts.clear();
     deletedCardIds.clear();
     dirtyCards.clear();
+    tool.value = "select";
+    activeStroke.value = null;
+    for (const timer of ghostTimers.values()) clearTimeout(timer);
+    ghostTimers.clear();
+    ghostStrokes.value = new Map();
   }
 
   // Move the camera by a distance in screen pixels (dragging the board right moves the camera left)
@@ -354,23 +387,16 @@ export const useBoardStore = defineStore("board", () => {
     return max + 1;
   }
 
-  // Create a new card of the given type in the centre of the current view.
-  // The card is added locally straight away (and selected), and removed again if the insert fails.
-  async function createCard(type: CardType): Promise<void> {
-    const definition = CARD_TYPES[type];
-    if (!boardId.value || !definition) return;
-
-    const { width, height } = definition.defaultSize;
-
-    // Find the world point at the centre of the viewport, and put the card's centre on it
+  // Where a new card of the given size goes: centred on the middle of the current view.
+  // If a card already sits (almost) exactly there, step diagonally until there's a free spot.
+  function defaultCardRect(size: { width: number; height: number }) {
     const centre = screenToWorld(
       { x: viewport.value.w / 2, y: viewport.value.h / 2 },
       camera.value,
     );
-    let x = centre.x - width / 2;
-    let y = centre.y - height / 2;
+    let x = centre.x - size.width / 2;
+    let y = centre.y - size.height / 2;
 
-    // If a card already sits (almost) exactly there, step diagonally until there's a free spot
     const isTaken = (px: number, py: number) =>
       cardList.value.some(
         (c) => Math.abs(c.x - px) < BOARD.CREATE_OFFSET && Math.abs(c.y - py) < BOARD.CREATE_OFFSET,
@@ -379,19 +405,139 @@ export const useBoardStore = defineStore("board", () => {
       x += BOARD.CREATE_OFFSET;
       y += BOARD.CREATE_OFFSET;
     }
+    return { x, y, ...size };
+  }
+
+  //============ Drawing ============
+  // Switch what a left-button drag on the board does. Drawing starts with nothing selected,
+  // and a line being drawn is dropped when the tool changes.
+  function setTool(next: BoardTool): void {
+    if (tool.value === next) return;
+    cancelStroke();
+    if (next === "draw") select(null);
+    tool.value = next;
+  }
+
+  // Share the active line's points that haven't been shared yet, so others see it as it is drawn
+  function sendStrokePreview(): void {
+    const stroke = activeStroke.value;
+    if (!stroke || strokeSentCount >= stroke.points.length) return;
+    const { id, color, thickness } = stroke;
+    const message: StrokePreviewMessage = {
+      strokeId: id,
+      color,
+      thickness,
+      points: stroke.points.slice(strokeSentCount),
+    };
+    channel?.send(REALTIME.EVENTS.STROKE_PREVIEW, message);
+    strokeSentCount = stroke.points.length;
+  }
+  const throttledSendStrokePreview = throttle(sendStrokePreview, REALTIME.RATES.STROKE);
+
+  // Start drawing a line at a point (in world units), with the user's current line options.
+  // The line's id becomes its card's id, so others can swap the ghost line for the card when it arrives.
+  function startStroke(point: Point): void {
+    cancelStroke();
+    const { color, thickness } = cardDefaults.value.draw;
+    activeStroke.value = { id: crypto.randomUUID(), color, thickness, points: [point] };
+    strokeSentCount = 0;
+    throttledSendStrokePreview();
+  }
+
+  // Add points (in world units) to the line being drawn
+  function extendStroke(points: Point[]): void {
+    const stroke = activeStroke.value;
+    if (!stroke || !points.length) return;
+    stroke.points.push(...points);
+    triggerRef(activeStroke);
+    throttledSendStrokePreview();
+  }
+
+  // Finish the line being drawn and turn it into a draw card.
+  // The new card isn't selected, so a series of lines can be drawn without each one being outlined.
+  function endStroke(): void {
+    const stroke = activeStroke.value;
+    if (!stroke) return;
+    activeStroke.value = null;
+    channel?.send(REALTIME.EVENTS.STROKE_END, { strokeId: stroke.id });
+
+    const { rect, content } = drawCardFromStroke(stroke.points, {
+      color: stroke.color,
+      thickness: stroke.thickness,
+      scale: camera.value.scale,
+    });
+    createCard("draw", { id: stroke.id, rect, content, select: false });
+  }
+
+  // Drop the line being drawn, without making a card
+  function cancelStroke(): void {
+    const stroke = activeStroke.value;
+    if (!stroke) return;
+    activeStroke.value = null;
+    channel?.send(REALTIME.EVENTS.STROKE_CANCEL, { strokeId: stroke.id });
+  }
+
+  // Remove someone else's ghost line (its card arrived, it was cancelled, or it stopped getting points)
+  function removeGhostStroke(id: string): void {
+    clearTimeout(ghostTimers.get(id));
+    ghostTimers.delete(id);
+    if (ghostStrokes.value.delete(id)) triggerRef(ghostStrokes);
+  }
+
+  // Remove a ghost line after a delay, unless something happens to it first
+  function expireGhostStroke(id: string, delay: number): void {
+    clearTimeout(ghostTimers.get(id));
+    ghostTimers.set(
+      id,
+      setTimeout(() => removeGhostStroke(id), delay),
+    );
+  }
+
+  // Someone else drew more of a line. Their card replaces the ghost line when it arrives.
+  function receiveStrokePreview(message: StrokePreviewMessage): void {
+    if (!Array.isArray(message.points) || cards.value.has(message.strokeId)) return;
+    const ghost = ghostStrokes.value.get(message.strokeId) ?? {
+      id: message.strokeId,
+      color: message.color,
+      thickness: message.thickness,
+      points: [],
+    };
+    ghost.points.push(...message.points);
+    ghostStrokes.value.set(ghost.id, ghost);
+    triggerRef(ghostStrokes);
+    expireGhostStroke(ghost.id, REALTIME.GHOST_STROKE_TIMEOUT);
+  }
+
+  // Create a new card of the given type. By default it is the type's default size, in the centre of the
+  // current view, with the user's default content, and is selected. A drawing gives its own id, rect and
+  // content instead (from the line), and isn't selected.
+  // The card is added locally straight away, and removed again if the insert fails.
+  async function createCard(
+    type: CardType,
+    options: {
+      id?: string;
+      rect?: { x: number; y: number; width: number; height: number };
+      content?: Json;
+      select?: boolean;
+    } = {},
+  ): Promise<void> {
+    const definition = CARD_TYPES[type];
+    if (!boardId.value || !definition) return;
+
+    const rect = options.rect ?? defaultCardRect(definition.defaultSize);
 
     // The id is generated here so the card can be shown before the insert returns.
     // created_at/updated_at and the author columns are filled in by the database.
     // New cards go in the middle layer, in front of everything already there.
     const insert = {
-      id: crypto.randomUUID(),
+      id: options.id ?? crypto.randomUUID(),
       board_id: boardId.value,
       type,
-      content: definition.newContent(cardDefaults.value),
-      x: clampCoordinate(x),
-      y: clampCoordinate(y),
-      width,
-      height,
+      content: options.content ?? definition.newContent(cardDefaults.value),
+      x: clampCoordinate(rect.x),
+      y: clampCoordinate(rect.y),
+      width: Math.min(BOARD.MAX_COORDINATE, rect.width),
+      height: Math.min(BOARD.MAX_COORDINATE, rect.height),
       layer: 1,
       z_order: frontZOrder(1),
       rev: 0,
@@ -406,7 +552,7 @@ export const useBoardStore = defineStore("board", () => {
       created_by: null,
       updated_by: null,
     });
-    select(insert.id);
+    if (options.select ?? true) select(insert.id);
 
     // Tell everyone else straight away, then write the card to the database.
     // (The query is wrapped in a promise so it can be awaited more than once without sending it again.)
@@ -809,11 +955,21 @@ export const useBoardStore = defineStore("board", () => {
       applyRemote(message.id, message),
     onContent: (message: Partial<Card> & { id: string; rev: number }) =>
       applyRemote(message.id, message),
-    onCreate: (card: Card) => upsertRemote(card, true),
+    onCreate: (card: Card) => {
+      removeGhostStroke(card.id);
+      upsertRemote(card, true);
+    },
     onDelete: (id: string) => {
       if (!pendingInserts.has(id)) removeLocally(id);
     },
-    onCommitted: (card: Card) => upsertRemote(card),
+    onCommitted: (card: Card) => {
+      removeGhostStroke(card.id);
+      upsertRemote(card);
+    },
+    onStrokePreview: receiveStrokePreview,
+    // Keep showing a finished line until its card arrives, which is usually straight away
+    onStrokeEnd: (strokeId: string) => expireGhostStroke(strokeId, REALTIME.GHOST_STROKE_END_DELAY),
+    onStrokeCancel: removeGhostStroke,
     onCommittedDelete: removeLocally,
     onBoardDeleted: () => leaveBoard("This board was deleted."),
     onAccessRevoked: (userId: string) => {
@@ -858,6 +1014,15 @@ export const useBoardStore = defineStore("board", () => {
     cardDefaults.value = {
       ...cardDefaults.value,
       shape: { ...cardDefaults.value.shape, ...patch },
+    };
+    return saveCardDefaults();
+  }
+
+  // Change the line options this user's next drawings start with, and save them to their preferences
+  function setDrawDefaults(patch: Partial<DrawDefaults>): Promise<void> {
+    cardDefaults.value = {
+      ...cardDefaults.value,
+      draw: { ...cardDefaults.value.draw, ...patch },
     };
     return saveCardDefaults();
   }
@@ -934,6 +1099,15 @@ export const useBoardStore = defineStore("board", () => {
     stopEditing,
     setNoteDefaults,
     setShapeDefaults,
+    setDrawDefaults,
+    tool,
+    activeStroke,
+    ghostStrokes,
+    setTool,
+    startStroke,
+    extendStroke,
+    endStroke,
+    cancelStroke,
     requestCustomColor,
     closeCustomColor,
     updateGeometry,

@@ -2,6 +2,8 @@ import type { RealtimeChannel } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabaseClient";
 import { REALTIME } from "@/constants";
 import type { Card } from "@/stores/board";
+import type { CardColor } from "@/types/cards";
+import type { Point } from "@/utils/camera";
 import type { BoardPresence } from "./locks";
 
 // A card's position, size and stacking, as broadcast while it is moved or resized
@@ -13,6 +15,14 @@ export type GeometryMessage = Pick<
 // A card's content, as broadcast while it is edited
 export type ContentMessage = Pick<Card, "id" | "content" | "rev">;
 
+// New points (in world units) of a line someone is drawing. The stroke id becomes the id of the line's card.
+export type StrokePreviewMessage = {
+  strokeId: string;
+  color: CardColor;
+  thickness: number;
+  points: Point[];
+};
+
 // What the board does with each kind of message on its channel
 export type BoardChannelHandlers = {
   // From other clients, before the change is written
@@ -20,6 +30,10 @@ export type BoardChannelHandlers = {
   onContent: (message: ContentMessage) => void;
   onCreate: (card: Card) => void;
   onDelete: (id: string) => void;
+  // A line someone is drawing grew, was finished (its card follows) or was cancelled
+  onStrokePreview: (message: StrokePreviewMessage) => void;
+  onStrokeEnd: (strokeId: string) => void;
+  onStrokeCancel: (strokeId: string) => void;
   // From the database, after a change is committed
   onCommitted: (card: Card) => void;
   onCommittedDelete: (id: string) => void;
@@ -65,6 +79,9 @@ export async function openBoardChannel(
   on(EVENTS.CARD_CONTENT, (payload) => handlers.onContent(payload as ContentMessage));
   on(EVENTS.CARD_CREATE, (payload) => handlers.onCreate(payload as Card));
   on(EVENTS.CARD_DELETE, (payload) => handlers.onDelete(payload.id as string));
+  on(EVENTS.STROKE_PREVIEW, (payload) => handlers.onStrokePreview(payload as StrokePreviewMessage));
+  on(EVENTS.STROKE_END, (payload) => handlers.onStrokeEnd(payload.strokeId as string));
+  on(EVENTS.STROKE_CANCEL, (payload) => handlers.onStrokeCancel(payload.strokeId as string));
   // Database events carry the committed row as `record` (or just the `id` for deletes)
   on(EVENTS.DB_INSERT, (payload) => handlers.onCommitted(payload.record as Card));
   on(EVENTS.DB_UPDATE, (payload) => handlers.onCommitted(payload.record as Card));

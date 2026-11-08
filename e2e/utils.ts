@@ -399,6 +399,35 @@ export async function createShape(page: Page): Promise<Locator> {
   return page.locator(`.board-card[data-card-id="${cardId}"]`);
 }
 
+export async function setDrawTool(page: Page, on: boolean) {
+  // Turn the Draw tool on or off with the toolbar's Draw button, if it isn't already
+  const drawButton = page.locator("button.toolbar-draw-button");
+  await expect(drawButton).toBeVisible();
+  if ((await drawButton.getAttribute("aria-pressed")) !== String(on)) await drawButton.click();
+  await expect(drawButton).toHaveAttribute("aria-pressed", String(on));
+}
+
+export async function drawLine(page: Page, points: [number, number][]): Promise<Locator> {
+  // Draw a line through the given screen points with the Draw tool (turning it on if needed)
+  await setDrawTool(page, true);
+  const cards = page.locator(".board-card");
+  const cardCount = await cards.count();
+  const [first, ...rest] = points;
+  await page.mouse.move(first![0], first![1]);
+  await page.mouse.down();
+  for (const [x, y] of rest) await page.mouse.move(x, y, { steps: 8 });
+  await page.mouse.up();
+
+  // Verify the line became a new draw card (the newest card is the last one on the board)
+  await expect(cards).toHaveCount(cardCount + 1);
+  const newCard = cards.last();
+  await expect(newCard.locator(".draw-card")).toHaveCount(1);
+
+  // Return a locator that keeps finding this card by its id
+  const cardId = await newCard.getAttribute("data-card-id");
+  return page.locator(`.board-card[data-card-id="${cardId}"]`);
+}
+
 export async function cardBox(card: Locator) {
   // Get a card's position and size on the screen (in screen pixels)
   const box = await card.boundingBox();
@@ -454,7 +483,14 @@ export async function shareBoardWith(page: Page, friendName: string) {
 }
 
 // The CSS properties the card tests read
-type StyleProperty = "backgroundColor" | "color" | "fontSize" | "fill" | "boxShadow";
+type StyleProperty =
+  | "backgroundColor"
+  | "color"
+  | "fontSize"
+  | "fill"
+  | "boxShadow"
+  | "stroke"
+  | "strokeWidth";
 
 // Read a CSS property of an element as the browser computed it
 export async function computedStyle(element: Locator, property: StyleProperty) {

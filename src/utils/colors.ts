@@ -44,6 +44,12 @@ export function cardText(textColor: CardColor, background: CardColor): string {
   return isHexColor(background) ? contrastingText(background) : `var(--card-${background}-text)`;
 }
 
+// The CSS colour for a drawn line. Lines are thin and drawn straight onto the board, so palette colours use their
+// stronger (text) shade, which stays visible on the board in both colour modes. "auto" is the board's text colour.
+export function strokeColor(color: CardColor): string {
+  return isHexColor(color) ? color : `var(--card-text-${color})`;
+}
+
 // The colour's name for menus ("yellow" → "Yellow", a hex colour → "Custom")
 export function colorLabel(color: CardColor): string {
   if (isHexColor(color)) return "Custom";

@@ -278,7 +278,7 @@ type PaletteColor = "auto" | "yellow" | "pink" | "blue" | "green" | "purple" | "
 
 type NoteContent  = { text: string; color: PaletteColor; textColor: PaletteColor };
 type ShapeContent = { shape: "square" | "triangle" | "circle"; color: CardColor };
-type DrawContent  = { color: PaletteColor; thickness: number; strokes: Point[][] }; // normalised 0..1 (4.4)
+type DrawContent  = { color: CardColor; thickness: number; strokes: [number, number][][] }; // normalised 0..1 (4.4)
 
 type Card = Omit<Tables<"cards">, "content"> &
   ({ type: "note"; content: NoteContent } | { type: "shape"; content: ShapeContent } | { type: "draw"; content: DrawContent });
@@ -615,6 +615,17 @@ A card held by someone else renders with a border in the holder's colour and a s
 ### 9.3 Draw branch (D1–D3)
 
 The tool state in the store (`select | draw`), toolbar toggle and toolbar options (colour, **green** until the user picks another, and thickness before drawing), capture, simplify and normalise (4.4), `DrawCardBody`, and changing colour and thickness after drawing via the context menu. Ghost strokes may come here or in the collaboration branch. The events are already defined (6.2).
+
+- **As built:**
+  - Ghost strokes came here, drawn in the chosen line colour (user colours come with the collaboration branch). A ghost line is removed when its card arrives, when it's cancelled, or 10 s after its last points (in case its drawer left mid-line).
+  - The Draw button toggles the Draw tool, and right-clicking it picks the next line's colour and thickness (1–64, presets 1–24, default 4). Escape drops a line being drawn, or else turns the tool off. Adding a note or shape turns it off too. New drawings aren't selected, so several lines can be drawn in a row.
+  - Lines use the palette's stronger text shades, because the light card shades (including the default green) barely show as thin lines on the board.
+  - The padding around a line is half its thickness plus 8 world units, so thin lines still have a card to grab and resize. A single click draws a dot.
+  - Drawings are **hollow**: until one is selected, only its line (plus a 6-unit margin) can be clicked, so a drawing around other cards doesn't block them. Once selected, its whole rectangle can be dragged and resized.
+  - Points are stored as `[x, y]` pairs rounded to 4 decimal places, which keeps a 2 000-point line around 35 KB.
+  - Changing the thickness grows the card around the line. The new size is broadcast before the new thickness, so each message has a newer rev and other clients apply both.
+  - Not done: the eraser (D4), and right-clicking a line while the Draw tool is on (cards ignore the pointer then).
+  - Tests are in `drawCard.spec.ts`, plus a two-user test in `boardCollaboration.spec.ts`.
 
 ### 9.4 Collaboration branch (C2–C4) and the eraser (D4)
 

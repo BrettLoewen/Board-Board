@@ -9,6 +9,7 @@ import {
   openBoard,
   createNote,
   createShape,
+  setDrawTool,
   cardBox,
   cardWorldPosition,
   dragCard,
@@ -135,6 +136,47 @@ test.describe("Board Collaboration", () => {
     // User1 deletes the shape, and verify user2 sees it go
     await user1Page.keyboard.press("Delete");
     await expect(user2Page.locator(".board-card")).toHaveCount(0);
+  });
+
+  test("Other users see lines as they are drawn, then as cards", async ({ browser }) => {
+    const [user1Page, user2Page] = await openSharedBoard(browser);
+    const ghost = user2Page.locator(".draw-preview-stroke");
+
+    // User1 starts a line and gives up on it, and verify user2 sees it appear, then go
+    await setDrawTool(user1Page, true);
+    await user1Page.mouse.move(400, 300);
+    await user1Page.mouse.down();
+    await user1Page.mouse.move(500, 360, { steps: 8 });
+    await expect(ghost).toHaveCount(1);
+    await user1Page.keyboard.press("Escape");
+    await user1Page.mouse.up();
+    await expect(ghost).toHaveCount(0);
+    await expect(user2Page.locator(".board-card")).toHaveCount(0);
+
+    // User1 draws a line, and verify user2 sees it while it's drawn, then as a card in the same place
+    await user1Page.mouse.move(400, 300);
+    await user1Page.mouse.down();
+    await user1Page.mouse.move(500, 360, { steps: 8 });
+    await expect(ghost).toHaveCount(1);
+    await user1Page.mouse.move(600, 420, { steps: 8 });
+    await user1Page.mouse.up();
+    const drawing = user1Page.locator(".board-card").first();
+    const user2Drawing = firstCard(user2Page);
+    await expect(user2Drawing.locator(".draw-card")).toHaveCount(1);
+    await expect(ghost).toHaveCount(0);
+    expect(await cardWorldPosition(user2Drawing)).toEqual(await cardWorldPosition(drawing));
+
+    // User1 makes the line thicker, which also grows the card around it.
+    // Verify user2 sees the new thickness and the new size and position.
+    await setDrawTool(user1Page, false);
+    await pickFromMenu(user1Page, drawing, "Thickness", "16");
+    await expectStyle(user2Drawing.locator(".draw-card-line"), "strokeWidth", "16px");
+    const size = (card: typeof drawing) =>
+      card.evaluate((el) => [(el as HTMLElement).style.width, (el as HTMLElement).style.height]);
+    await expect.poll(() => size(user2Drawing)).toEqual(await size(drawing));
+    await expect
+      .poll(() => cardWorldPosition(user2Drawing))
+      .toEqual(await cardWorldPosition(drawing));
   });
 
   test("A note being edited can't be edited or moved by other users", async ({ browser }) => {

@@ -252,7 +252,7 @@ test.describe("Note Cards", () => {
 
     // Type a size into the Text size menu's field
     await openSubmenu(page, note, "Text size");
-    const sizeInput = page.locator("input.font-size-input");
+    const sizeInput = page.locator("input.size-input");
     await expect(sizeInput).toBeVisible();
     await sizeInput.fill("20");
     await sizeInput.press("Enter");
