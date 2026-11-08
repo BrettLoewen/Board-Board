@@ -75,6 +75,12 @@ export const REALTIME = {
     CARD_CONTENT: "card:content",
     CARD_CREATE: "card:create",
     CARD_DELETE: "card:delete",
+    // A line being drawn, shown to everyone else as it is drawn (a "ghost" line), until its card arrives
+    STROKE_PREVIEW: "stroke:preview",
+    STROKE_END: "stroke:end",
+    STROKE_CANCEL: "stroke:cancel",
+    // Where someone's pointer is on the board (or that it left the board)
+    CURSOR: "cursor",
     // Sent by database triggers on a board's channel (see the board_realtime migration)
     DB_INSERT: "INSERT",
     DB_UPDATE: "UPDATE",
@@ -88,7 +94,19 @@ export const REALTIME = {
   RATES: {
     GEOMETRY: 50,
     CONTENT: 100,
+    // New points of a line being drawn
+    STROKE: 50,
+    // The pointer's position. Not sent while dragging a card or drawing: others work the pointer out from the
+    // card's movement or the line instead, which saves messages.
+    CURSOR: 100,
   },
+  // Someone's cursor is hidden this long (ms) after their last update
+  CURSOR_TIMEOUT: 5000,
+  // A ghost line is removed this long (ms) after its last points arrive, in case the person drawing it left
+  // without finishing it (lines whose card arrives are removed straight away)
+  GHOST_STROKE_TIMEOUT: 10000,
+  // After a ghost line is finished, how long (ms) to keep showing it while its card is on the way
+  GHOST_STROKE_END_DELAY: 1500,
   // Two clients can grab the same card before either sees the other's presence. Holds that arrive within
   // this long (ms) of each other are settled by the earliest grab. A hold arriving later never displaces
   // a hold everyone has already seen.
@@ -128,8 +146,11 @@ export const BOARD = {
   CLICK_HOLD_TIME: 300,
   // How far (px) the pointer must move after pressing a card before it starts dragging (the Windows drag threshold)
   DRAG_THRESHOLD: 4,
-  // How close (px) to a card's edge a press must be to resize it rather than move it
-  RESIZE_MARGIN: 6,
+  // The band around a card's edge where a press resizes it rather than moving it: this far (screen px) inside
+  // the edge, and this far outside it. Reaching outside makes the edge easy to hit without taking much of the
+  // card's own area away from moving it.
+  RESIZE_MARGIN: 5,
+  RESIZE_REACH: 8,
   // How long (ms) after the last keystroke a note's text is written to the database.
   // It is also written straight away when editing stops.
   CONTENT_WRITE_DELAY: 600,
@@ -138,6 +159,23 @@ export const BOARD = {
   DOT_SPACING: 32,
   DOT_RADIUS: 1.5,
   DOT_GROWTH: 0.4,
+};
+
+export const DRAW = {
+  // Space (world units) around a drawn line inside its card, on top of half the line's thickness.
+  // It gives thin lines enough card to grab and to resize from.
+  PADDING: 8,
+  // How far (world units) past each side of a line a click still counts as clicking the line.
+  // Kept below PADDING so the clickable area stays inside the card.
+  HIT_MARGIN: 6,
+  // How far (screen px) a point can stray from a straight line before simplifying keeps it.
+  // Converted to world units with the zoom at the time the line is finished.
+  SIMPLIFY_TOLERANCE: 0.5,
+  // The most points a line keeps (more are simplified away), so its card stays well inside the size limits
+  // of the database's `content_size` check and of realtime messages
+  MAX_POINTS: 2000,
+  // Points are stored as fractions of the card's drawing area, rounded to this many decimal places
+  POINT_PRECISION: 4,
 };
 
 export const FRIEND_REQUEST_ERRORS = {

@@ -9,6 +9,9 @@ import {
   cardBox,
   cardWorldPosition,
   dragCard,
+  expectStyle,
+  openSubmenu,
+  pickFromMenu,
 } from "./utils";
 
 // For every test...
@@ -20,42 +23,11 @@ test.beforeEach(async ({ page }) => {
   await page.goto("http://localhost:5173/Board-Board/");
 });
 
-// The note colours used by these tests, as the browser reports them (light mode, see the card palette in main.css)
-const GREEN = "rgb(187, 247, 208)"; // The default note colour
-const BLUE = "rgb(191, 219, 254)";
-const PINK_TEXT = "rgb(190, 24, 93)";
-
-// Read a CSS property of an element as the browser computed it
-async function computedStyle(element: Locator, property: "backgroundColor" | "color" | "fontSize") {
-  return element.evaluate((el, prop) => getComputedStyle(el)[prop], property);
-}
-
-// Verify a CSS property of an element, waiting for it to settle (buttons fade between colours)
-async function expectStyle(
-  element: Locator,
-  property: "backgroundColor" | "color" | "fontSize",
-  expected: string,
-) {
-  await expect.poll(() => computedStyle(element, property)).toBe(expected);
-}
-
-// Open a menu from a right-click on an element, then open one of its submenus
-async function openSubmenu(page: Page, target: Locator, submenu: string) {
-  const box = await target.boundingBox();
-  await page.mouse.click(box!.x + box!.width / 2, box!.y + box!.height / 2, { button: "right" });
-  const submenuItem = page.getByRole("menuitem", { name: submenu, exact: true });
-  await expect(submenuItem).toBeVisible();
-  await submenuItem.hover();
-}
-
-// Pick an option from a submenu of an element's right-click menu
-async function pickFromMenu(page: Page, target: Locator, submenu: string, option: string) {
-  await openSubmenu(page, target, submenu);
-  const optionItem = page.getByRole("menuitemcheckbox", { name: option, exact: true });
-  await expect(optionItem).toBeVisible();
-  await optionItem.click();
-  await expect(optionItem).not.toBeVisible();
-}
+// The note colours used by these tests, as the browser reports them (see PALETTE_COLORS in colors.ts)
+const GREEN = "rgb(21, 128, 61)"; // The default note colour
+const BLUE = "rgb(29, 78, 216)";
+const PINK_TEXT = "rgb(236, 72, 153)";
+const WHITE = "rgb(255, 255, 255)";
 
 // Click a note (a quick click, which starts editing its text)
 async function clickNote(page: Page, note: Locator, offsetX = 60, offsetY = 40) {
@@ -225,6 +197,13 @@ test.describe("Note Cards", () => {
     // Pick Blue from the note's Colour menu and verify the note turned blue
     await pickFromMenu(page, note, "Colour", "Blue");
     await expectStyle(note.locator(".note-card"), "backgroundColor", BLUE);
+    // Verify the note's auto text turned white, which reads better on blue
+    await expectStyle(note.locator(".note-card"), "color", WHITE);
+
+    // Verify the colour is the same in dark mode (palette colours don't change with the colour mode)
+    await page.evaluate(() => document.documentElement.classList.add("dark"));
+    await expectStyle(note.locator(".note-card"), "backgroundColor", BLUE);
+    await page.evaluate(() => document.documentElement.classList.remove("dark"));
 
     // Verify the Note button and the next note use the colour that was picked last
     const noteButton = page.locator("button.toolbar-note-button");
@@ -281,7 +260,7 @@ test.describe("Note Cards", () => {
 
     // Type a size into the Text size menu's field
     await openSubmenu(page, note, "Text size");
-    const sizeInput = page.locator("input.font-size-input");
+    const sizeInput = page.locator("input.size-input");
     await expect(sizeInput).toBeVisible();
     await sizeInput.fill("20");
     await sizeInput.press("Enter");
@@ -391,5 +370,39 @@ test.describe("Note Cards", () => {
     await page.reload();
     await page.waitForTimeout(1000);
     await expect(cards).toHaveCount(0);
+  });
+
+  test("Notes resize from just outside their edges, and move from just inside", async ({
+    page,
+  }) => {
+    const note = await createNote(page);
+    const start = await cardBox(note);
+
+    // Press 6px outside the right edge and drag, and verify the note got wider without moving
+    await page.mouse.move(start.x + start.width + 6, start.y + start.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(start.x + start.width + 66, start.y + start.height / 2, { steps: 8 });
+    await page.mouse.up();
+    const wider = await cardBox(note);
+    expect(wider.width - start.width).toBeCloseTo(60, 0);
+    expect(wider.x).toBeCloseTo(start.x, 0);
+
+    // Press just outside the bottom-right corner and drag, and verify both edges moved
+    await page.mouse.move(wider.x + wider.width + 5, wider.y + wider.height + 5);
+    await page.mouse.down();
+    await page.mouse.move(wider.x + wider.width + 45, wider.y + wider.height + 35, { steps: 8 });
+    await page.mouse.up();
+    const bigger = await cardBox(note);
+    expect(bigger.width - wider.width).toBeCloseTo(40, 0);
+    expect(bigger.height - wider.height).toBeCloseTo(30, 0);
+
+    // Press 8px inside the left edge and drag, and verify the note moved instead of resizing
+    await page.mouse.move(bigger.x + 8, bigger.y + bigger.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(bigger.x + 68, bigger.y + bigger.height / 2 + 30, { steps: 8 });
+    await page.mouse.up();
+    const moved = await cardBox(note);
+    expect(moved.x - bigger.x).toBeCloseTo(60, 0);
+    expect(moved.width).toBeCloseTo(bigger.width, 0);
   });
 });

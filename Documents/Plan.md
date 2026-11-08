@@ -45,17 +45,19 @@ It is a guideline, not a contract. When an implementation finds a better approac
 | Live drawing         | Other users see an in-progress stroke live (a ghost stroke) before it becomes a card.                                                                                                                                                                                                                        |
 | Wheel (B3)           | The mouse wheel **and** trackpad two-finger scroll always zoom around the cursor. Pinch (`ctrlKey` wheel) zooms too. There is no wheel-to-pan, so panning is click-drag only.                                                                                                                                   |
 | Max zoom-out (B4)    | At maximum zoom-out the **whole board always fits**. On a tall or wide board, the view extends past the bounds on the shorter axis (just more dots) and stays centred on that axis (3.3).                                                                                                                       |
-| Shape choice (S2)    | The toolbar creates a default shape (square), and the shape is changed afterwards from the right-click menu, as in the prototype.                                                                                                                                                                                |
+| Shape choice (S2)    | The toolbar creates the user's default shape (a square until they pick another). A shape is changed from its right-click menu, and right-clicking the toolbar's Shape button picks the next one ahead of time.                                                                                                                                                                                |
 | Busy guard           | The basic-board branch already **refuses a drag on a card someone else is holding**, using presence holds, without any visual indicator. Lock visuals come with the collaboration branch.                                                                                                                       |
 | Pan input (B2)       | Left-drag on **empty board** pans when the Select tool is active. **Middle-drag pans in any tool**, including over cards. Left-drag on a card moves the card. (Was A1.) |
 | Camera on open (B4)  | Fit content bounds plus margin into the viewport, **capped at 100% zoom**. An empty board opens centred on the origin at 100%. The camera is not persisted. (Was A6.) |
 | Edge auto-pan        | **In scope** (was A7, not in scope). Dragging a card within 50 px of the viewport edge pans the camera that way (up to 800 px/s) and carries the card with it, so the board grows as the card moves into the margin. Drag only: resizing near the edge does not pan, because interact's resize rect is in screen pixels. |
 | Zoom input           | Clicking the zoom percentage turns it into a text field. Enter or blur applies it (clamped to the zoom range), Escape cancels. |
 | Note editing (A3)    | Movement decides, not a timer: moving the pointer 4 px after pressing starts a drag straight away. Releasing within **300 ms** without moving is a click, which enters text edit mode with the cursor where you clicked. Holding still past 300 ms "picks up" the card (it lifts) and releasing doesn't edit. While editing, drags inside the text select text, and the frame around the text still moves the card. Escape, or clicking elsewhere, stops editing. (300 ms is below the usual OS long-press of 400–500 ms but well above a normal click.) |
-| Card colours (A4/A5) | A palette of named colours (auto, yellow, orange, pink, purple, blue, green, gray), each with light and dark shades, stored by name. Plus **Custom…**, a colour picker with a hex field, stored as `#rrggbb` (same in both modes). `auto` text picks a readable colour for the card. Picked text colours use a stronger shade of the palette colour. |
-| Card defaults        | New notes use the colours and text size the user **last picked** (saved per card type in `user_preferences.card_defaults`, so shapes and drawings get their own). Before any pick, notes are **green** with auto text at size 16. The toolbar's Note button is drawn in the default colours (the text size doesn't show on it), and right-clicking it changes the defaults ahead of time. |
+| Card colours (A4/A5) | A palette of named colours (auto, yellow, orange, red, pink, purple, blue, green, gray), stored by name. Plus **Custom…**, a colour picker with a hex field, stored as `#rrggbb`. **One palette for both colour modes** (changed after the draw branch): every named colour is the same in light and dark mode, and only `auto` follows the mode. The colours are mid-strength (yellow `#facc15`, orange `#f97316`, red `#b91c1c`, pink `#ec4899`, purple `#7e22ce`, blue `#1d4ed8`, green `#15803d`, gray `#6b7280`), so each reads as a thin line on both the light and the dark board, and the same name means the same colour for notes, shapes, lines and text. `auto` text is black or white, whichever reads better on the card. |
+| Card defaults        | New notes use the colours and text size the user **last picked** (saved per card type in `user_preferences.card_defaults`, so shapes and drawings get their own). Before any pick, notes are **green** with auto text at size 16. The toolbar's Note button is drawn in the default colours (the text size doesn't show on it), and right-clicking it changes the defaults ahead of time. Shapes work the same way: before any pick they are **green squares**, and the Shape button shows the next shape in its colour. Draw cards will start **green** too. |
 | Note text size       | Chosen from the right-click menu: a field to type any size (6–200, Enter or clicking away applies it), above presets 12–64. Sizes are in world units, so text scales with the zoom. A bigger size grows the note to fit. |
+| Resize handles       | A press resizes a card within **5 px inside** its edge or **8 px outside** it (screen pixels, at any zoom), instead of 6 px inside only. The handle straddles the edge, so it's easier to hit and leaves more of the card for moving. |
 | Note auto-grow (A9)  | A note **grows taller** when its text overflows, while it is being edited. It never shrinks on its own. |
+| Eraser (D4)          | **Dropped.** Deleting a drawing card is good enough, so there is no Erase tool. |
 
 ### 1.2 Defaults assumed by this plan (_unconfirmed_, ask before relying on them)
 
@@ -277,8 +279,8 @@ alter table public.cards alter column type drop default;  -- a client bug must n
 type PaletteColor = "auto" | "yellow" | "pink" | "blue" | "green" | "purple" | "orange" | "gray" | ...; // A4
 
 type NoteContent  = { text: string; color: PaletteColor; textColor: PaletteColor };
-type ShapeContent = { shape: "square" | "triangle" | "circle"; color: PaletteColor };
-type DrawContent  = { color: PaletteColor; thickness: number; strokes: Point[][] }; // normalised 0..1 (4.4)
+type ShapeContent = { shape: "square" | "triangle" | "circle"; color: CardColor };
+type DrawContent  = { color: CardColor; thickness: number; strokes: [number, number][][] }; // normalised 0..1 (4.4)
 
 type Card = Omit<Tables<"cards">, "content"> &
   ({ type: "note"; content: NoteContent } | { type: "shape"; content: ShapeContent } | { type: "draw"; content: DrawContent });
@@ -286,16 +288,16 @@ type Card = Omit<Tables<"cards">, "content"> &
 
 The generated `Database` type will type `content` as `Json`. Every read goes through the registry's `parseContent`, which fills in defaults for missing fields, so old rows and new fields stay compatible without migrations.
 
-Palette colours are CSS variables, for example `--card-yellow` defined for `:root` and `.dark`, so a card's colour follows the viewer's colour mode (N3). `auto` uses neutral variables (`--ui-bg-elevated` / `--ui-text`).
+Palette colours were first CSS variables with light and dark values, so a card's colour followed the viewer's colour mode (N3). They became **one palette for both modes** (`PALETTE_COLORS` in `src/utils/colors.ts`, see 1.1): only `auto` still follows the mode, through `--card-auto` / `--card-auto-text`. For N3, that means the user chooses a colour that looks the same everywhere, or picks `auto` to match the colour mode.
 
-### 4.4 Draw cards (D1–D4)
+### 4.4 Draw cards (D1–D3)
 
 - **Capture:** with the Draw tool active, a pointerdown on the viewport (on top of cards too) starts a stroke. Points are collected in **world** units via `screenToWorld`. Pointer events are coalesced with `getCoalescedEvents()` for smoothness and rendered live in `DrawPreview`.
 - **On release:** simplify the stroke (Ramer–Douglas–Peucker with a tolerance of about 0.5 / scale world units, capped at ~2 000 points). Then compute the stroke's bounding box, pad it by `thickness / 2` on every side so the line isn't clipped, and create the card with that rect. Points are stored **normalised to the inner box** (card rect minus the padding), as `0..1` pairs.
 - **Render:** `<svg :viewBox="`0 0 ${w} ${h}`">` with a polyline whose points are `pad + p.x * (w - 2*pad)`, and so on, and `stroke-width = thickness`. Thickness is in world units, so it scales with the **camera zoom** (it's part of the board) but **not with the card's resize** (confirmed decision). Avoid `vector-effect: non-scaling-stroke`, because it would also ignore the camera zoom.
 - **Changing thickness after drawing (D3):** the padding changes, so adjust `x/y/width/height` by the padding difference in the same update. That keeps the path visually in place.
 - **Live ghost stroke for other users:** broadcast `stroke:preview` events with batches of new world-space points (Section 6.2), plus `stroke:end` or `stroke:cancel`. Receivers draw them in the drawer's user colour (or the chosen stroke colour) in `DrawPreview`. When the real card's INSERT arrives, the ghost for that `strokeId` is removed. The client generates the card id up front and uses it as the `strokeId`.
-- **Eraser (D4, "maybe"):** `strokes: Point[][]` already allows one card to hold several polylines. Erasing hit-tests the eraser path against the segments (in world units, using the card transform). It removes the covered points and splits polylines where needed, then recomputes the bounding box and renormalises. A card with no points left is deleted. Erasing needs the card's lock (Section 7.2) like any other edit. This is deliberately last in the roadmap.
+- **Eraser (D4): dropped.** Deleting a drawing card is good enough. (The design was to hit-test the eraser path against each line's segments, split lines where they were erased, then re-fit the card around what was left.)
 
 ### 4.5 Client state: the board store
 
@@ -306,7 +308,7 @@ boardId, board row
 cards: Map<id, Card>       // or reactive record; never arrays mutated by index from children
 camera: { x, y, scale }, viewport: { w, h }
 derived: contentRect, bounds, minScale, sortedForZ, lockByCardId (from presence), myHolds
-tool: 'select' | 'draw' | 'erase'; toolOptions: { drawColor, drawThickness }
+tool: 'select' | 'draw'; toolOptions: { drawColor, drawThickness }
 selection: cardId | null
 remote: presence list, cursors, ghost strokes
 actions: createCard, updateGeometry, updateContent, deleteCard, setLayer, bringToFront,
@@ -333,7 +335,7 @@ Components read from the store and call its actions. `Card.vue` today copies the
 
 | Interaction                    | Rule                                                                                                                                                                                                 |
 | ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Pointer routing                | **Don't `stopPropagation` on cards.** interact.js listens on the document, so a stopped pointerdown never starts a drag. Instead, the board's pointerdown handler starts a left-button pan only when `!e.target.closest('.board-card')`. Pointerdown on empty board pans (Select tool) or draws (Draw tool). The middle button always pans; call `preventDefault` on its `mousedown` so Windows autoscroll doesn't start. In Draw/Erase tools, cards ignore pointer events (`pointer-events: none` on the cards layer) so strokes can start over them. |
+| Pointer routing                | **Don't `stopPropagation` on cards.** interact.js listens on the document, so a stopped pointerdown never starts a drag. Instead, the board's pointerdown handler starts a left-button pan only when `!e.target.closest('.board-card')`. Pointerdown on empty board pans (Select tool) or draws (Draw tool). The middle button always pans; call `preventDefault` on its `mousedown` so Windows autoscroll doesn't start. With the Draw tool, cards ignore pointer events (`pointer-events: none` on the cards layer) so strokes can start over them. |
 | Coordinates                    | Cards only know world units. The camera conversion happens only in `camera.ts` helpers and interact listeners (÷ scale).                                                                            |
 | Bounds                         | Any geometry change, local or remote, re-derives `contentRect`, then `bounds`, then `minScale`. The camera is re-clamped **only on camera input or viewport resize**, never because a card moved. Remote activity never moves your camera. |
 | Creation                       | At the view centre (3.5), or from the stroke (4.4).                                                                                                                                                 |
@@ -471,7 +473,7 @@ type BoardPresence = {
   username: string;
   color: string;                 // from userColor(userId), A8
   joinedAt: number;
-  hold: { cardId: string; mode: "move" | "resize" | "edit" | "erase"; at: number } | null;
+  hold: { cardId: string; mode: "move" | "resize" | "edit"; at: number } | null;
 };
 ```
 
@@ -560,7 +562,7 @@ A card held by someone else renders with a border in the holder's colour and a s
 | Remote card deleted that I'm holding                 | Can't happen while I hold it: deleting requires the lock. If it does (a race or a Studio edit), the DB `DELETE` wins. Drop the hold and abort the interaction.                                                                                                                                   |
 | Remote z change                                      | Re-sort and update z-index. No DOM reorder.                                                                                                                                                                                                                                                     |
 | Remote zoom or pan                                   | Never shared. Cameras are per user.                                                                                                                                                                                                                                                             |
-| Colour mode differs between users                    | Cards store palette names, and each viewer resolves them for their own mode (N3).                                                                                                                                                                                                               |
+| Colour mode differs between users                    | Cards store palette names. Named colours look the same in both modes, and `auto` resolves to each viewer's mode (N3).                                                                                                                                                                                                               |
 | Remote text while I'm reading the note               | Applied live by rev. If I double-click to edit it, the lock check refuses until the holder releases.                                                                                                                                                                                            |
 | Reconnect after a gap                                 | Refetch the cards and merge by rev, then re-track presence. Holds and ghost strokes from before the gap are rebuilt from presence and new events.                                                                                                                                              |
 
@@ -604,13 +606,42 @@ A card held by someone else renders with a border in the holder's colour and a s
 
 `ShapeCardBody` (SVG `viewBox="0 0 100 100"`, `preserveAspectRatio="none"`, ellipse / polygon / rect filling the box). Toolbar Shape button. Context menu for shape kind and colour. Nothing new in the realtime layer: shapes use the same `card:geometry` and `card:content` events.
 
+- **As built:**
+  - No migration was needed: the `shape` card type already existed, and `content` and `card_defaults` are JSON.
+  - The last shape and colour picked become the defaults for the next shape, as with notes (`card_defaults.shape`).
+  - Shapes can use custom colours as well as the palette, and resize freely, so a square can become a rectangle and a circle an ellipse. The smallest size is 40 x 40.
+  - The registry's `frameless` flag removes the card's rectangular shadow, and the SVG draws a drop shadow that follows the shape.
+  - The whole card rectangle is still the grab area, including the empty corners around a circle or triangle. This keeps the resize edges working.
+  - Tests are in `shapeCard.spec.ts`, plus a two-user test in `boardCollaboration.spec.ts`.
+  - Later polish: shapes became **hollow** like drawings. Until a shape is selected, only its fill can be clicked, so the empty corners of a triangle or circle don't block cards underneath. Once selected, its whole rectangle can be dragged and resized.
+
 ### 9.3 Draw branch (D1–D3)
 
-The tool state in the store (`select | draw`), toolbar toggle and toolbar options (colour and thickness before drawing), capture, simplify and normalise (4.4), `DrawCardBody`, and changing colour and thickness after drawing via the context menu. Ghost strokes may come here or in the collaboration branch. The events are already defined (6.2).
+The tool state in the store (`select | draw`), toolbar toggle and toolbar options (colour, **green** until the user picks another, and thickness before drawing), capture, simplify and normalise (4.4), `DrawCardBody`, and changing colour and thickness after drawing via the context menu. Ghost strokes may come here or in the collaboration branch. The events are already defined (6.2).
 
-### 9.4 Collaboration branch (C2–C4) and the eraser (D4)
+- **As built:**
+  - Ghost strokes came here, drawn in the chosen line colour (user colours come with the collaboration branch). A ghost line is removed when its card arrives, when it's cancelled, or 10 s after its last points (in case its drawer left mid-line).
+  - The Draw button toggles the Draw tool, and right-clicking it picks the next line's colour and thickness (1–64, presets 1–24, default 4). Escape drops a line being drawn, or else turns the tool off. Adding a note or shape turns it off too. New drawings aren't selected, so several lines can be drawn in a row.
+  - Lines first used the palette's stronger text shades, because the light card shades (including the default green) barely showed as thin lines on the board. With the later single palette, lines use the same colours as notes and shapes.
+  - The padding around a line is half its thickness plus 8 world units, so thin lines still have a card to grab and resize. A single click draws a dot.
+  - Drawings are **hollow**: until one is selected, only its line (plus a 6-unit margin) can be clicked, so a drawing around other cards doesn't block them. Once selected, its whole rectangle can be dragged and resized.
+  - Points are stored as `[x, y]` pairs rounded to 4 decimal places, which keeps a 2 000-point line around 35 KB.
+  - Changing the thickness grows the card around the line. The new size is broadcast before the new thickness, so each message has a newer rev and other clients apply both.
+  - Not done: right-clicking a line while the Draw tool is on (cards ignore the pointer then). The eraser (D4) was dropped (4.4).
+  - Tests are in `drawCard.spec.ts`, plus a two-user test in `boardCollaboration.spec.ts`.
 
-Presence bar (C2), lock visuals and refusal feedback (7.4), cursors (7.3), ghost strokes if not done earlier, user colours (A8). Then the eraser (4.4), if it's still wanted.
+### 9.4 Collaboration branch (C2–C4)
+
+Presence bar (C2), lock visuals and refusal feedback (7.4), cursors (7.3), ghost strokes if not done earlier, user colours (A8). The eraser (4.4) was planned to follow, but was dropped.
+
+- **As built:**
+  - User colours (A8) hash the user id (FNV-1a) into 12 colours that read on both the light and dark board.
+  - The presence bar (C2) sits in the top bar's right corner (the zoom control has the board's top-right corner). It shows other users only, once per user however many tabs they have open, in the order they joined, with up to 4 initials chips and then a "+N" chip. Hovering a chip shows the name.
+  - Lock visuals (C3/C4): a held card has a border and a name tag ("Sam is moving / resizing / editing") in the holder's colour. Both stay the same size on screen at any zoom. Its right-click menu only says who has it, and anything refused (dragging, typing, deleting, the layer or menu options) shakes the tag. Held cards stay hoverable and selectable, rather than `pointer-events: none`, so the refusal can be shown.
+  - Cursors (C4) are broadcast at 100 ms in world units, plus once with `null` when the pointer leaves the board. Nothing is sent while dragging a card or drawing: receivers move the holder's cursor with the card, keeping its place relative to the card (which also follows a resize corner), or put it at the end of the ghost line. Receivers glide each cursor to its latest position, and hide it after 5 s without updates or when its client leaves.
+  - The two visual items left from basic collaboration: held cards glide between broadcasts with a 60 ms CSS transition (instead of interpolating in JavaScript), and a "Reconnecting…" notice shows while the channel is down or the browser is offline. Coming back online refetches the cards, because the channel can take up to a minute to notice a dropped network.
+  - Ghost lines keep the line's own colour rather than the drawer's colour, so they look like the card they will become. The drawer's cursor (in their colour) is shown at the end of the line.
+  - The eraser (D4) was dropped: deleting a drawing card is good enough. The toolbar's unused Erase button was removed.
 
 C1 (sharing with friends) **already exists** through `shared_boards` and the Share modal on the dashboard. Board features only need to rely on `can_select_board`, which the realtime policies above already do.
 

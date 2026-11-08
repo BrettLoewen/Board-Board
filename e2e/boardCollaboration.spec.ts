@@ -8,9 +8,13 @@ import {
   shareBoardWith,
   openBoard,
   createNote,
+  createShape,
+  setDrawTool,
   cardBox,
   cardWorldPosition,
   dragCard,
+  expectStyle,
+  pickFromMenu,
 } from "./utils";
 
 // For every test...
@@ -57,6 +61,13 @@ async function openSharedBoard(browser: Browser): Promise<[Page, Page]> {
   return [user1Page, user2Page];
 }
 
+// A user's colour as another page shows it (the background of their presence chip)
+async function avatarColor(page: Page, username: string) {
+  const avatar = page.locator(".presence-avatar", { hasText: username.slice(0, 2).toUpperCase() });
+  await expect(avatar).toBeVisible();
+  return avatar.evaluate((el) => getComputedStyle(el).backgroundColor);
+}
+
 // The first card on a page (each page has its own copy of the same board)
 function firstCard(page: Page) {
   return page.locator(".board-card").first();
@@ -101,13 +112,192 @@ test.describe("Board Collaboration", () => {
       .poll(() =>
         user2Note.locator(".note-card").evaluate((el) => getComputedStyle(el).backgroundColor),
       )
-      .toBe("rgb(251, 207, 232)");
+      .toBe("rgb(236, 72, 153)");
 
     // User1 deletes the note, and verify user2 sees it go
     await user1Page.mouse.click(moved.x + 60, moved.y + 60);
     await user1Page.keyboard.press("Escape");
     await user1Page.keyboard.press("Delete");
     await expect(user2Page.locator(".board-card")).toHaveCount(0);
+  });
+
+  test("Other users see shapes being created, moved, changed and deleted", async ({ browser }) => {
+    const [user1Page, user2Page] = await openSharedBoard(browser);
+
+    // User1 creates a shape, and verify user2 sees it
+    const shape = await createShape(user1Page);
+    const user2Shape = firstCard(user2Page);
+    await expect(user2Shape.locator(".shape-card")).toHaveAttribute("data-shape", "square");
+
+    // User1 drags the shape, and verify user2 sees it end up in the same place
+    await dragCard(user1Page, shape, 120, 80);
+    const end = await cardWorldPosition(shape);
+    await expect.poll(() => cardWorldPosition(user2Shape)).toEqual(end);
+
+    // User1 changes the shape and its colour, and verify user2 sees both
+    await pickFromMenu(user1Page, shape, "Shape", "Circle");
+    await expect(user2Shape.locator(".shape-card")).toHaveAttribute("data-shape", "circle");
+    await pickFromMenu(user1Page, shape, "Colour", "Pink");
+    await expectStyle(user2Shape.locator(".shape-card"), "fill", "rgb(236, 72, 153)");
+
+    // User1 deletes the shape, and verify user2 sees it go
+    await user1Page.keyboard.press("Delete");
+    await expect(user2Page.locator(".board-card")).toHaveCount(0);
+  });
+
+  test("Other users see lines as they are drawn, then as cards", async ({ browser }) => {
+    const [user1Page, user2Page] = await openSharedBoard(browser);
+    const ghost = user2Page.locator(".draw-preview-stroke");
+
+    // User1 starts a line and gives up on it, and verify user2 sees it appear, then go
+    await setDrawTool(user1Page, true);
+    await user1Page.mouse.move(400, 300);
+    await user1Page.mouse.down();
+    await user1Page.mouse.move(500, 360, { steps: 8 });
+    await expect(ghost).toHaveCount(1);
+    await user1Page.keyboard.press("Escape");
+    await user1Page.mouse.up();
+    await expect(ghost).toHaveCount(0);
+    await expect(user2Page.locator(".board-card")).toHaveCount(0);
+
+    // User1 draws a line, and verify user2 sees it while it's drawn, then as a card in the same place
+    await user1Page.mouse.move(400, 300);
+    await user1Page.mouse.down();
+    await user1Page.mouse.move(500, 360, { steps: 8 });
+    await expect(ghost).toHaveCount(1);
+    await user1Page.mouse.move(600, 420, { steps: 8 });
+    await user1Page.mouse.up();
+    const drawing = user1Page.locator(".board-card").first();
+    const user2Drawing = firstCard(user2Page);
+    await expect(user2Drawing.locator(".draw-card")).toHaveCount(1);
+    await expect(ghost).toHaveCount(0);
+    expect(await cardWorldPosition(user2Drawing)).toEqual(await cardWorldPosition(drawing));
+
+    // User1 makes the line thicker, which also grows the card around it.
+    // Verify user2 sees the new thickness and the new size and position.
+    await setDrawTool(user1Page, false);
+    await pickFromMenu(user1Page, drawing, "Thickness", "16");
+    await expectStyle(user2Drawing.locator(".draw-card-line"), "strokeWidth", "16px");
+    const size = (card: typeof drawing) =>
+      card.evaluate((el) => [(el as HTMLElement).style.width, (el as HTMLElement).style.height]);
+    await expect.poll(() => size(user2Drawing)).toEqual(await size(drawing));
+    await expect
+      .poll(() => cardWorldPosition(user2Drawing))
+      .toEqual(await cardWorldPosition(drawing));
+  });
+
+  test("Users see who else is on the board", async ({ browser }) => {
+    const [user1Page, user2Page] = await openSharedBoard(browser);
+
+    // Verify each user sees the other's chip (with their name), but not their own
+    const user1Avatars = user1Page.locator(".presence-avatar");
+    const user2Avatars = user2Page.locator(".presence-avatar");
+    await expect(user1Avatars).toHaveCount(1);
+    await expect(user1Avatars).toHaveAttribute("aria-label", user2Name);
+    await expect(user2Avatars).toHaveCount(1);
+    await expect(user2Avatars).toHaveAttribute("aria-label", user1Name);
+
+    // Verify the two users have different colours here (each id hashes to its own colour)
+    expect(await avatarColor(user1Page, user2Name)).not.toBe(
+      await avatarColor(user2Page, user1Name),
+    );
+
+    // User2 leaves the board, and verify their chip goes away for user1
+    await user2Page.locator(".navbar-board a", { hasText: "Dashboard" }).click();
+    await expect(user1Avatars).toHaveCount(0);
+  });
+
+  test("Cards held by someone else show who has them, and refuse changes", async ({ browser }) => {
+    const [user1Page, user2Page] = await openSharedBoard(browser);
+    const note = await createNote(user1Page);
+    const user2Note = firstCard(user2Page);
+    await expect(user2Note).toHaveCount(1);
+    const tag = user2Note.locator(".card-lock-tag");
+
+    // User1 picks up the note and starts dragging it (without letting go)
+    const box = await cardBox(note);
+    await user1Page.mouse.move(box.x + 100, box.y + 100);
+    await user1Page.mouse.down();
+    await user1Page.mouse.move(box.x + 160, box.y + 140, { steps: 10 });
+
+    // Verify user2 sees the note held by user1, with a border in user1's colour
+    await expect(tag).toHaveText(`${user1Name} is moving`);
+    await expect(user2Note).toHaveClass(/board-card-locked/);
+    expect(await user2Note.evaluate((el) => getComputedStyle(el).outlineColor)).toBe(
+      await avatarColor(user2Page, user1Name),
+    );
+
+    // Verify user2's menu for the note only says who has it
+    const user2Box = await cardBox(user2Note);
+    await user2Page.mouse.click(user2Box.x + 60, user2Box.y + 60, { button: "right" });
+    const lockedItem = user2Page.getByRole("menuitem", {
+      name: `${user1Name} is moving this card`,
+    });
+    await expect(lockedItem).toBeVisible();
+    await expect(lockedItem).toHaveAttribute("aria-disabled", "true");
+    await expect(user2Page.getByRole("menuitem", { name: "Delete" })).toHaveCount(0);
+    await user2Page.keyboard.press("Escape");
+    await expect(user2Page.getByRole("menu")).toHaveCount(0);
+
+    // User2 tries to delete the note, and verify it stays and the name tag shakes
+    await user2Page.mouse.click(user2Box.x + 60, user2Box.y + 60);
+    await user2Page.keyboard.press("Escape");
+    await user2Page.mouse.click(user2Box.x + 60, user2Box.y + 60);
+    await user2Page.keyboard.press("Delete");
+    await expect(user2Note).toHaveClass(/board-card-refused/);
+    await expect(user2Page.locator(".board-card")).toHaveCount(1);
+
+    // User1 lets go, and verify the note shows as free again for user2
+    await user1Page.mouse.up();
+    await expect(tag).toHaveCount(0);
+    await expect(user2Note).not.toHaveClass(/board-card-locked/);
+
+    // User1 starts typing in the note, and verify user2 sees them editing it
+    const moved = await cardBox(note);
+    await user1Page.mouse.click(moved.x + 60, moved.y + 40);
+    await expect(note).toHaveClass(/board-card-editing/);
+    await expect(tag).toHaveText(`${user1Name} is editing`);
+  });
+
+  test("Users see each other's cursors", async ({ browser }) => {
+    const [user1Page, user2Page] = await openSharedBoard(browser);
+    const cursor = user2Page.locator(".remote-cursor");
+
+    // Where user1's cursor is drawn on user2's screen (both boards open at the same view)
+    const cursorPoint = async () => {
+      const box = await cursor.boundingBox();
+      return box ? { x: Math.round(box.x), y: Math.round(box.y) } : null;
+    };
+
+    // User1 moves their pointer over the board, and verify user2 sees it there with user1's name
+    await user1Page.mouse.move(500, 400, { steps: 5 });
+    await expect(cursor).toHaveCount(1);
+    await expect(cursor.locator(".remote-cursor-label")).toHaveText(user1Name);
+    await expect.poll(cursorPoint).toEqual({ x: 500, y: 400 });
+    await user1Page.mouse.move(700, 300, { steps: 5 });
+    await expect.poll(cursorPoint).toEqual({ x: 700, y: 300 });
+
+    // User1 drags a note (their cursor isn't sent while dragging), and verify the cursor follows the note
+    const note = await createNote(user1Page);
+    const box = await cardBox(note);
+    await user1Page.mouse.move(box.x + 100, box.y + 100, { steps: 5 });
+    await expect.poll(cursorPoint).toEqual({
+      x: Math.round(box.x + 100),
+      y: Math.round(box.y + 100),
+    });
+    await user1Page.mouse.down();
+    await user1Page.mouse.move(box.x + 250, box.y + 160, { steps: 10 });
+    await expect
+      .poll(async () => {
+        const point = await cursorPoint();
+        return point && Math.hypot(point.x - (box.x + 250), point.y - (box.y + 160));
+      })
+      .toBeLessThan(3);
+    await user1Page.mouse.up();
+
+    // User1 moves their pointer off the board, and verify user2 stops seeing it
+    await user1Page.mouse.move(640, 30, { steps: 5 });
+    await expect(cursor).toHaveCount(0);
   });
 
   test("A note being edited can't be edited or moved by other users", async ({ browser }) => {
@@ -228,7 +418,7 @@ test.describe("Board Collaboration", () => {
 
     // User2 goes offline while user1 moves the note and creates another
     await user2Page.context().setOffline(true);
-    await user2Page.waitForTimeout(500);
+    await expect(user2Page.locator(".board-reconnecting")).toBeVisible();
     await dragCard(user1Page, note, -80, -80);
     await createNote(user1Page);
     const moved = await cardWorldPosition(note);
@@ -237,6 +427,7 @@ test.describe("Board Collaboration", () => {
     // User2 comes back online, and verify they catch up on both changes
     await user2Page.context().setOffline(false);
     await expect(user2Page.locator(".board-card")).toHaveCount(2, { timeout: 15000 });
+    await expect(user2Page.locator(".board-reconnecting")).toHaveCount(0);
     await expect.poll(() => cardWorldPosition(user2Note), { timeout: 15000 }).toEqual(moved);
   });
 

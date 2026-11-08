@@ -1,14 +1,20 @@
 <script setup lang="ts">
 import { ref, watch } from "vue";
-import { FONT_SIZE_RANGE } from "@/cards/fontSizeMenu";
 
-// A field at the top of a text size menu for typing any size (like the zoom percentage)
-const props = defineProps<{ fontSize: number }>();
-const emit = defineEmits<{ apply: [fontSize: number] }>();
+// A field at the top of a size menu (text size, line thickness) for typing any size, like the zoom percentage.
+// `label` is shown beside the field, and `name` is what screen readers call it.
+const props = defineProps<{
+  size: number;
+  min: number;
+  max: number;
+  label: string;
+  name: string;
+}>();
+const emit = defineEmits<{ apply: [size: number] }>();
 
-const typed = ref(String(props.fontSize));
+const typed = ref(String(props.size));
 watch(
-  () => props.fontSize,
+  () => props.size,
   (size) => (typed.value = String(size)),
 );
 
@@ -16,10 +22,10 @@ watch(
 // Anything that isn't a number is ignored and the field goes back to the current size.
 function apply(): void {
   const size = Math.round(parseFloat(typed.value));
-  if (Number.isFinite(size) && size !== props.fontSize) {
-    emit("apply", Math.min(FONT_SIZE_RANGE.max, Math.max(FONT_SIZE_RANGE.min, size)));
+  if (Number.isFinite(size) && size !== props.size) {
+    emit("apply", Math.min(props.max, Math.max(props.min, size)));
   } else {
-    typed.value = String(props.fontSize);
+    typed.value = String(props.size);
   }
 }
 
@@ -33,13 +39,13 @@ function onKeyDown(event: KeyboardEvent): void {
 </script>
 
 <template>
-  <label class="font-size-field">
-    <span>Size</span>
+  <label class="size-field">
+    <span>{{ label }}</span>
     <input
       v-model="typed"
-      class="font-size-input"
+      class="size-input"
       inputmode="numeric"
-      aria-label="Text size"
+      :aria-label="name"
       @keydown="onKeyDown"
       @blur="apply"
       @focus="($event.target as HTMLInputElement).select()"
@@ -48,7 +54,7 @@ function onKeyDown(event: KeyboardEvent): void {
 </template>
 
 <style>
-.font-size-field {
+.size-field {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -58,7 +64,7 @@ function onKeyDown(event: KeyboardEvent): void {
   color: var(--ui-text);
 }
 
-.font-size-input {
+.size-input {
   width: 4em;
   padding: 2px 6px;
   border-radius: 4px;
@@ -67,7 +73,7 @@ function onKeyDown(event: KeyboardEvent): void {
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
-.font-size-input:focus {
+.size-input:focus {
   outline: 1px solid var(--ui-primary);
 }
 </style>

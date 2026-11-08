@@ -1,5 +1,5 @@
 import { defineStore } from "pinia";
-import { computed, ref, type Ref } from "vue";
+import { computed, ref, shallowRef, triggerRef, type Ref } from "vue";
 import { useToast } from "vue-toastification";
 import { useRouter } from "vue-router";
 import { supabase } from "@/lib/supabaseClient";
@@ -18,11 +18,30 @@ import {
   type Viewport,
 } from "@/utils/camera";
 import type { Json, Tables, TablesInsert, TablesUpdate } from "@/types/database.types";
-import type { CardColor, CardDefaults, CardType, HexColor, NoteDefaults } from "@/types/cards";
+import type {
+  BoardTool,
+  CardColor,
+  CardDefaults,
+  CardType,
+  DrawDefaults,
+  HexColor,
+  NoteDefaults,
+  ShapeDefaults,
+} from "@/types/cards";
 import { CARD_TYPES } from "@/cards/registry";
+import { asObject } from "@/cards/content";
+import { drawCardFromStroke, parseDrawDefaults } from "@/cards/draw";
 import { parseNoteDefaults } from "@/cards/note";
+import { parseShapeContent } from "@/cards/shape";
+import { throttle } from "@/utils/throttle";
 import { useAuthStore } from "./auth";
-import { openBoardChannel, type BoardChannel } from "@/realtime/boardChannel";
+import {
+  openBoardChannel,
+  type BoardChannel,
+  type CursorMessage,
+  type StrokePreviewMessage,
+} from "@/realtime/boardChannel";
+import { userColor } from "@/utils/users";
 import { createLockResolver, type BoardPresence, type Hold, type HoldMode } from "@/realtime/locks";
 
 export type Card = Tables<"cards">;
@@ -39,9 +58,25 @@ export type CustomColorRequest = {
 
 // Read the user's saved card defaults, falling back to the built-in defaults for anything missing or invalid
 function parseCardDefaults(value: Json | undefined): CardDefaults {
-  const note = value && typeof value === "object" && !Array.isArray(value) ? value.note : undefined;
-  return { note: parseNoteDefaults(note) };
+  const saved = asObject(value);
+  return {
+    note: parseNoteDefaults(saved.note),
+    shape: parseShapeContent(saved.shape),
+    draw: parseDrawDefaults(saved.draw),
+  };
 }
+
+// A line being drawn, in world units: by this client, or by someone else (a "ghost" line)
+export type Stroke = { id: string; color: CardColor; thickness: number; points: Point[] };
+
+// Someone else's pointer on the board, in world units, and when it last moved
+export type RemoteCursor = { clientId: string; x: number; y: number; lastSeen: number };
+
+// Another user on the board (all of their tabs together), for the presence indicators
+export type BoardUser = { userId: string; username: string; color: string };
+
+// Who is holding a card, for showing the card as locked
+export type CardLock = { userId: string; username: string; color: string; mode: HoldMode };
 
 // Keep a value inside the range the database accepts (see the `sane_geometry` check on cards)
 function clampCoordinate(value: number): number {
@@ -86,6 +121,19 @@ export const useBoardStore = defineStore("board", () => {
   // Set while the custom colour picker is open
   const customColorRequest = ref<CustomColorRequest | null>(null);
 
+  //============ Drawing state ============
+  // What a left-button drag on the board does. Local to this user.
+  const tool = ref<BoardTool>("select");
+  // The line this client is drawing, and other people's lines as they draw them (by stroke id, which becomes
+  // the card's id). Lines can have thousands of points, so they aren't deeply reactive: changes are announced
+  // with triggerRef instead.
+  const activeStroke = shallowRef<Stroke | null>(null);
+  const ghostStrokes = shallowRef(new Map<string, Stroke>());
+  // How many of the active line's points have been shared so far
+  let strokeSentCount = 0;
+  // Removes each ghost line that stops getting points (its drawer may have left)
+  const ghostTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
   //============ Collaboration state ============
   // The board's realtime channel, while the board is open
   let channel: BoardChannel | null = null;
@@ -102,6 +150,33 @@ export const useBoardStore = defineStore("board", () => {
   const lostHold = ref<{ cardId: string; at: number } | null>(null);
   // When this client joined the board (shared through presence)
   let joinedAt = 0;
+  // Whether the channel has connected at least once since the board was opened. A lost connection after
+  // that shows as "reconnecting".
+  const hasConnected = ref(false);
+  // Whether the browser says it's online. The channel can take up to a minute to notice a dropped network
+  // (it waits for a missed heartbeat), and the browser usually knows straight away.
+  const online = ref(typeof navigator === "undefined" ? true : navigator.onLine);
+  // The board is showing changes that may be out of date: it was connected, and now it isn't
+  const reconnecting = computed(() => hasConnected.value && (!connected.value || !online.value));
+  function onBrowserOffline(): void {
+    online.value = false;
+  }
+  // Back online: catch up on anything missed, even if the channel never noticed it was cut off
+  function onBrowserOnline(): void {
+    online.value = true;
+    refetchCards();
+  }
+  // The last time someone tried to change a card another client is holding (and was refused), so the card
+  // can show who is holding it
+  const refusal = ref<{ cardId: string; at: number } | null>(null);
+
+  //============ Cursors ============
+  // Other clients' pointers on the board, in world units (by client id)
+  const remoteCursors = shallowRef(new Map<string, RemoteCursor>());
+  // This client's pointer: when it was last shared, and a share waiting to go out
+  let lastCursorSent = 0;
+  let cursorTimer: ReturnType<typeof setTimeout> | undefined;
+  let pendingCursor: Point | null = null;
   // Cards created here whose insert hasn't returned yet, and the insert itself. A refetch mustn't remove them,
   // and writes and deletes for them wait for the insert (otherwise they could reach the database first and miss).
   const pendingInserts = new Map<string, Promise<unknown>>();
@@ -198,6 +273,11 @@ export const useBoardStore = defineStore("board", () => {
       return;
     }
     channel = opened;
+
+    // Notice the network dropping (and coming back) as soon as the browser does
+    online.value = navigator.onLine;
+    window.addEventListener("offline", onBrowserOffline);
+    window.addEventListener("online", onBrowserOnline);
   }
 
   // Leave the board: let go of any held card (writing its final state first), then leave the channel
@@ -205,6 +285,8 @@ export const useBoardStore = defineStore("board", () => {
     if (editingCardId.value) stopEditing(editingCardId.value);
     if (myHold.value) await release(myHold.value.cardId);
 
+    window.removeEventListener("offline", onBrowserOffline);
+    window.removeEventListener("online", onBrowserOnline);
     const closing = channel;
     channel = null;
     reset();
@@ -232,6 +314,17 @@ export const useBoardStore = defineStore("board", () => {
     pendingInserts.clear();
     deletedCardIds.clear();
     dirtyCards.clear();
+    tool.value = "select";
+    activeStroke.value = null;
+    for (const timer of ghostTimers.values()) clearTimeout(timer);
+    ghostTimers.clear();
+    ghostStrokes.value = new Map();
+    hasConnected.value = false;
+    refusal.value = null;
+    remoteCursors.value = new Map();
+    clearTimeout(cursorTimer);
+    pendingCursor = null;
+    lastCursorSent = 0;
   }
 
   // Move the camera by a distance in screen pixels (dragging the board right moves the camera left)
@@ -345,23 +438,16 @@ export const useBoardStore = defineStore("board", () => {
     return max + 1;
   }
 
-  // Create a new card of the given type in the centre of the current view.
-  // The card is added locally straight away (and selected), and removed again if the insert fails.
-  async function createCard(type: CardType): Promise<void> {
-    const definition = CARD_TYPES[type];
-    if (!boardId.value || !definition) return;
-
-    const { width, height } = definition.defaultSize;
-
-    // Find the world point at the centre of the viewport, and put the card's centre on it
+  // Where a new card of the given size goes: centred on the middle of the current view.
+  // If a card already sits (almost) exactly there, step diagonally until there's a free spot.
+  function defaultCardRect(size: { width: number; height: number }) {
     const centre = screenToWorld(
       { x: viewport.value.w / 2, y: viewport.value.h / 2 },
       camera.value,
     );
-    let x = centre.x - width / 2;
-    let y = centre.y - height / 2;
+    let x = centre.x - size.width / 2;
+    let y = centre.y - size.height / 2;
 
-    // If a card already sits (almost) exactly there, step diagonally until there's a free spot
     const isTaken = (px: number, py: number) =>
       cardList.value.some(
         (c) => Math.abs(c.x - px) < BOARD.CREATE_OFFSET && Math.abs(c.y - py) < BOARD.CREATE_OFFSET,
@@ -370,19 +456,143 @@ export const useBoardStore = defineStore("board", () => {
       x += BOARD.CREATE_OFFSET;
       y += BOARD.CREATE_OFFSET;
     }
+    return { x, y, ...size };
+  }
+
+  //============ Drawing ============
+  // Switch what a left-button drag on the board does. Drawing starts with nothing selected,
+  // and a line being drawn is dropped when the tool changes.
+  function setTool(next: BoardTool): void {
+    if (tool.value === next) return;
+    cancelStroke();
+    if (next === "draw") select(null);
+    tool.value = next;
+  }
+
+  // Share the active line's points that haven't been shared yet, so others see it as it is drawn
+  function sendStrokePreview(): void {
+    const stroke = activeStroke.value;
+    if (!stroke || strokeSentCount >= stroke.points.length) return;
+    const { id, color, thickness } = stroke;
+    const message: StrokePreviewMessage = {
+      clientId,
+      strokeId: id,
+      color,
+      thickness,
+      points: stroke.points.slice(strokeSentCount),
+    };
+    channel?.send(REALTIME.EVENTS.STROKE_PREVIEW, message);
+    strokeSentCount = stroke.points.length;
+  }
+  const throttledSendStrokePreview = throttle(sendStrokePreview, REALTIME.RATES.STROKE);
+
+  // Start drawing a line at a point (in world units), with the user's current line options.
+  // The line's id becomes its card's id, so others can swap the ghost line for the card when it arrives.
+  function startStroke(point: Point): void {
+    cancelStroke();
+    const { color, thickness } = cardDefaults.value.draw;
+    activeStroke.value = { id: crypto.randomUUID(), color, thickness, points: [point] };
+    strokeSentCount = 0;
+    throttledSendStrokePreview();
+  }
+
+  // Add points (in world units) to the line being drawn
+  function extendStroke(points: Point[]): void {
+    const stroke = activeStroke.value;
+    if (!stroke || !points.length) return;
+    stroke.points.push(...points);
+    triggerRef(activeStroke);
+    throttledSendStrokePreview();
+  }
+
+  // Finish the line being drawn and turn it into a draw card.
+  // The new card isn't selected, so a series of lines can be drawn without each one being outlined.
+  function endStroke(): void {
+    const stroke = activeStroke.value;
+    if (!stroke) return;
+    activeStroke.value = null;
+    channel?.send(REALTIME.EVENTS.STROKE_END, { strokeId: stroke.id });
+
+    const { rect, content } = drawCardFromStroke(stroke.points, {
+      color: stroke.color,
+      thickness: stroke.thickness,
+      scale: camera.value.scale,
+    });
+    createCard("draw", { id: stroke.id, rect, content, select: false });
+  }
+
+  // Drop the line being drawn, without making a card
+  function cancelStroke(): void {
+    const stroke = activeStroke.value;
+    if (!stroke) return;
+    activeStroke.value = null;
+    channel?.send(REALTIME.EVENTS.STROKE_CANCEL, { strokeId: stroke.id });
+  }
+
+  // Remove someone else's ghost line (its card arrived, it was cancelled, or it stopped getting points)
+  function removeGhostStroke(id: string): void {
+    clearTimeout(ghostTimers.get(id));
+    ghostTimers.delete(id);
+    if (ghostStrokes.value.delete(id)) triggerRef(ghostStrokes);
+  }
+
+  // Remove a ghost line after a delay, unless something happens to it first
+  function expireGhostStroke(id: string, delay: number): void {
+    clearTimeout(ghostTimers.get(id));
+    ghostTimers.set(
+      id,
+      setTimeout(() => removeGhostStroke(id), delay),
+    );
+  }
+
+  // Someone else drew more of a line. Their card replaces the ghost line when it arrives.
+  function receiveStrokePreview(message: StrokePreviewMessage): void {
+    if (!Array.isArray(message.points) || cards.value.has(message.strokeId)) return;
+    const ghost = ghostStrokes.value.get(message.strokeId) ?? {
+      id: message.strokeId,
+      color: message.color,
+      thickness: message.thickness,
+      points: [],
+    };
+    ghost.points.push(...message.points);
+    // The drawer's pointer is at the end of their line (they don't send their cursor while drawing)
+    const end = message.points[message.points.length - 1];
+    if (end) setRemoteCursor(message.clientId, end);
+    ghostStrokes.value.set(ghost.id, ghost);
+    triggerRef(ghostStrokes);
+    expireGhostStroke(ghost.id, REALTIME.GHOST_STROKE_TIMEOUT);
+  }
+
+  // Create a new card of the given type. By default it is the type's default size, in the centre of the
+  // current view, with the user's default content, and is selected. A drawing gives its own id, rect and
+  // content instead (from the line), and isn't selected.
+  // The card is added locally straight away, and removed again if the insert fails.
+  async function createCard(
+    type: CardType,
+    options: {
+      id?: string;
+      rect?: { x: number; y: number; width: number; height: number };
+      content?: Json;
+      select?: boolean;
+    } = {},
+  ): Promise<void> {
+    const definition = CARD_TYPES[type];
+    if (!boardId.value || !definition) return;
+
+    const rect = options.rect ?? defaultCardRect(definition.defaultSize);
 
     // The id is generated here so the card can be shown before the insert returns.
     // created_at/updated_at and the author columns are filled in by the database.
     // New cards go in the middle layer, in front of everything already there.
     const insert = {
-      id: crypto.randomUUID(),
+      id: options.id ?? crypto.randomUUID(),
       board_id: boardId.value,
       type,
-      content: definition.newContent(cardDefaults.value),
-      x: clampCoordinate(x),
-      y: clampCoordinate(y),
-      width,
-      height,
+      content: options.content ?? definition.newContent(cardDefaults.value),
+      x: clampCoordinate(rect.x),
+      y: clampCoordinate(rect.y),
+      width: Math.min(BOARD.MAX_COORDINATE, rect.width),
+      height: Math.min(BOARD.MAX_COORDINATE, rect.height),
       layer: 1,
       z_order: frontZOrder(1),
       rev: 0,
@@ -397,7 +607,7 @@ export const useBoardStore = defineStore("board", () => {
       created_by: null,
       updated_by: null,
     });
-    select(insert.id);
+    if (options.select ?? true) select(insert.id);
 
     // Tell everyone else straight away, then write the card to the database.
     // (The query is wrapped in a promise so it can be awaited more than once without sending it again.)
@@ -420,7 +630,8 @@ export const useBoardStore = defineStore("board", () => {
   // It is removed locally (and for everyone else) straight away, and restored if the delete fails.
   async function deleteCard(id: string): Promise<void> {
     const card = cards.value.get(id);
-    if (!card || isHeldByOther(id)) return;
+    if (!card) return;
+    if (isHeldByOther(id)) return refuse(id);
 
     removeLocally(id);
     channel?.send(REALTIME.EVENTS.CARD_DELETE, { id });
@@ -584,7 +795,8 @@ export const useBoardStore = defineStore("board", () => {
   // Move a card to another layer, in front of the cards already in it. Skipped while someone else holds the card.
   function setLayer(id: string, layer: number): void {
     const card = cards.value.get(id);
-    if (!card || card.layer === layer || isHeldByOther(id)) return;
+    if (!card || card.layer === layer) return;
+    if (isHeldByOther(id)) return refuse(id);
 
     card.z_order = frontZOrder(layer, id);
     card.layer = layer;
@@ -596,7 +808,7 @@ export const useBoardStore = defineStore("board", () => {
   // Change a card's content in one go (for example, its colour from the menu), share it and write it.
   // Skipped while someone else holds the card.
   function changeContent(id: string, patch: Record<string, Json | undefined>): void {
-    if (isHeldByOther(id)) return;
+    if (isHeldByOther(id)) return refuse(id);
     updateContent(id, patch);
     broadcastContent(id);
     persistCard(id);
@@ -640,6 +852,44 @@ export const useBoardStore = defineStore("board", () => {
     return holder !== undefined && holder !== clientId;
   }
 
+  // Note that someone tried to change a card another client holds, so the card can show who holds it
+  function refuse(id: string): void {
+    refusal.value = { cardId: id, at: Date.now() };
+  }
+
+  // Everyone else on the board, one entry per user (a user with two tabs open shows once), in the order
+  // they joined. This user isn't included, even from another tab.
+  const otherUsers = computed<BoardUser[]>(() => {
+    const users = new Map<string, BoardUser>();
+    const sorted = [...presences.value].sort((a, b) => a.joinedAt - b.joinedAt);
+    for (const presence of sorted) {
+      if (presence.userId === auth.user?.id || users.has(presence.userId)) continue;
+      users.set(presence.userId, {
+        userId: presence.userId,
+        username: presence.username,
+        color: userColor(presence.userId),
+      });
+    }
+    return [...users.values()];
+  });
+
+  // Who holds each card held by another client
+  const lockByCard = computed(() => {
+    const presenceByClient = new Map(presences.value.map((p) => [p.clientId, p]));
+    const locks = new Map<string, CardLock>();
+    for (const [cardId, holderId] of lockByCardId.value) {
+      const holder = presenceByClient.get(holderId);
+      if (holderId === clientId || !holder?.hold) continue;
+      locks.set(cardId, {
+        userId: holder.userId,
+        username: holder.username,
+        color: userColor(holder.userId),
+        mode: holder.hold.mode,
+      });
+    }
+    return locks;
+  });
+
   // Whether this client is holding a card
   function isHolding(id: string): boolean {
     return myHold.value?.cardId === id && !isHeldByOther(id);
@@ -665,7 +915,10 @@ export const useBoardStore = defineStore("board", () => {
   // The grab takes effect straight away, without waiting for presence to come back, so grabbing feels instant.
   // A client holds one card at a time, so grabbing another card lets go of the first.
   function acquire(id: string, mode: HoldMode): boolean {
-    if (isHeldByOther(id)) return false;
+    if (isHeldByOther(id)) {
+      refuse(id);
+      return false;
+    }
     if (myHold.value?.cardId === id) return true;
     if (myHold.value) release(myHold.value.cardId);
 
@@ -739,6 +992,60 @@ export const useBoardStore = defineStore("board", () => {
 
   // Apply a change from someone else, if it is newer than what this client has (a higher rev).
   // A client never applies changes to the card it is holding: it is the only one changing it.
+  //============ Cursors ============
+  // Share where this client's pointer is on the board (in world units), or null when it leaves the board.
+  // Shared at most every RATES.CURSOR, always ending on the latest position. Nothing is sent while a card is
+  // being dragged or a line drawn: others work the pointer out from those instead.
+  function moveCursor(point: Point | null): void {
+    if (point && (cardInteraction.value || activeStroke.value)) return;
+
+    // Leaving the board is sent straight away, and drops any position still waiting to go out
+    if (!point) {
+      clearTimeout(cursorTimer);
+      cursorTimer = undefined;
+      pendingCursor = null;
+      sendCursor(null);
+      return;
+    }
+
+    pendingCursor = point;
+    if (cursorTimer) return;
+    const wait = Math.max(0, lastCursorSent + REALTIME.RATES.CURSOR - Date.now());
+    cursorTimer = setTimeout(() => {
+      cursorTimer = undefined;
+      if (pendingCursor) sendCursor(pendingCursor);
+      pendingCursor = null;
+    }, wait);
+  }
+
+  function sendCursor(point: Point | null): void {
+    lastCursorSent = Date.now();
+    const message: CursorMessage = { clientId, x: point?.x ?? null, y: point?.y ?? null };
+    channel?.send(REALTIME.EVENTS.CURSOR, message);
+  }
+
+  // Move (or add) someone's cursor
+  function setRemoteCursor(id: string, point: Point): void {
+    if (id === clientId) return;
+    remoteCursors.value.set(id, { clientId: id, x: point.x, y: point.y, lastSeen: Date.now() });
+    triggerRef(remoteCursors);
+  }
+
+  // Remove someone's cursor (it left the board, or they left)
+  function removeRemoteCursor(id: string): void {
+    if (remoteCursors.value.delete(id)) triggerRef(remoteCursors);
+  }
+
+  // A card someone is holding moved or changed size. They don't send their cursor while dragging, so move it
+  // with the card: it keeps the same place relative to the card (for example, on the corner being resized).
+  function moveCursorWithCard(before: Rect, after: Rect, holderId: string | undefined): void {
+    const cursor = holderId ? remoteCursors.value.get(holderId) : undefined;
+    if (!cursor || !before.w || !before.h) return;
+    const fx = (cursor.x - before.x) / before.w;
+    const fy = (cursor.y - before.y) / before.h;
+    setRemoteCursor(cursor.clientId, { x: after.x + fx * after.w, y: after.y + fy * after.h });
+  }
+
   function applyRemote(id: string, fields: Partial<Card> & { rev: number }): void {
     const card = cards.value.get(id);
     if (!card || myHold.value?.cardId === id || fields.rev <= card.rev) return;
@@ -796,15 +1103,37 @@ export const useBoardStore = defineStore("board", () => {
 
   // What the board does with each message on its channel
   const channelHandlers = {
-    onGeometry: (message: Partial<Card> & { id: string; rev: number }) =>
-      applyRemote(message.id, message),
+    onGeometry: (message: Partial<Card> & { id: string; rev: number }) => {
+      const card = cards.value.get(message.id);
+      const before = card && { x: card.x, y: card.y, w: card.width, h: card.height };
+      applyRemote(message.id, message);
+      if (card && before) {
+        const after = { x: card.x, y: card.y, w: card.width, h: card.height };
+        moveCursorWithCard(before, after, lockByCardId.value.get(message.id));
+      }
+    },
     onContent: (message: Partial<Card> & { id: string; rev: number }) =>
       applyRemote(message.id, message),
-    onCreate: (card: Card) => upsertRemote(card, true),
+    onCreate: (card: Card) => {
+      removeGhostStroke(card.id);
+      upsertRemote(card, true);
+    },
     onDelete: (id: string) => {
       if (!pendingInserts.has(id)) removeLocally(id);
     },
-    onCommitted: (card: Card) => upsertRemote(card),
+    onCommitted: (card: Card) => {
+      removeGhostStroke(card.id);
+      upsertRemote(card);
+    },
+    onStrokePreview: receiveStrokePreview,
+    onCursor: (message: CursorMessage) => {
+      if (typeof message.x === "number" && typeof message.y === "number") {
+        setRemoteCursor(message.clientId, { x: message.x, y: message.y });
+      } else removeRemoteCursor(message.clientId);
+    },
+    // Keep showing a finished line until its card arrives, which is usually straight away
+    onStrokeEnd: (strokeId: string) => expireGhostStroke(strokeId, REALTIME.GHOST_STROKE_END_DELAY),
+    onStrokeCancel: removeGhostStroke,
     onCommittedDelete: removeLocally,
     onBoardDeleted: () => leaveBoard("This board was deleted."),
     onAccessRevoked: (userId: string) => {
@@ -818,6 +1147,10 @@ export const useBoardStore = defineStore("board", () => {
       presences.value = [...others, myPresence()];
       lockByCardId.value = lockResolver.update(presences.value);
 
+      // Forget the cursors of clients that left
+      const here = new Set(presences.value.map((presence) => presence.clientId));
+      for (const id of remoteCursors.value.keys()) if (!here.has(id)) removeRemoteCursor(id);
+
       // If someone else won the card this client is holding, let go of it
       const hold = myHold.value;
       if (hold && isHeldByOther(hold.cardId)) loseHold(hold.cardId);
@@ -825,6 +1158,7 @@ export const useBoardStore = defineStore("board", () => {
     onConnected: () => {
       connected.value = true;
       if (!joinedAt) joinedAt = Date.now();
+      hasConnected.value = true;
       // Catch up on anything missed, then share this client's presence (including any card it was holding,
       // which the rules in locks.ts give back to it only if nobody else took it in the meantime)
       refetchCards();
@@ -835,13 +1169,35 @@ export const useBoardStore = defineStore("board", () => {
     },
   };
 
-  // Change the colours this user's new notes start with, and save them to their preferences
-  async function setNoteDefaults(patch: Partial<NoteDefaults>): Promise<void> {
+  // Change the options this user's new notes start with, and save them to their preferences
+  function setNoteDefaults(patch: Partial<NoteDefaults>): Promise<void> {
     cardDefaults.value = {
       ...cardDefaults.value,
       note: { ...cardDefaults.value.note, ...patch },
     };
+    return saveCardDefaults();
+  }
 
+  // Change the options this user's new shapes start with, and save them to their preferences
+  function setShapeDefaults(patch: Partial<ShapeDefaults>): Promise<void> {
+    cardDefaults.value = {
+      ...cardDefaults.value,
+      shape: { ...cardDefaults.value.shape, ...patch },
+    };
+    return saveCardDefaults();
+  }
+
+  // Change the line options this user's next drawings start with, and save them to their preferences
+  function setDrawDefaults(patch: Partial<DrawDefaults>): Promise<void> {
+    cardDefaults.value = {
+      ...cardDefaults.value,
+      draw: { ...cardDefaults.value.draw, ...patch },
+    };
+    return saveCardDefaults();
+  }
+
+  // Save this user's card defaults to their preferences
+  async function saveCardDefaults(): Promise<void> {
     if (!auth.user) return;
     const { error } = await supabase
       .from("user_preferences")
@@ -869,6 +1225,13 @@ export const useBoardStore = defineStore("board", () => {
     viewport,
     cardInteraction,
     connected,
+    hasConnected,
+    reconnecting,
+    refusal,
+    otherUsers,
+    lockByCard,
+    remoteCursors,
+    moveCursor,
     presences,
     lockByCardId,
     myHold,
@@ -911,6 +1274,16 @@ export const useBoardStore = defineStore("board", () => {
     startEditing,
     stopEditing,
     setNoteDefaults,
+    setShapeDefaults,
+    setDrawDefaults,
+    tool,
+    activeStroke,
+    ghostStrokes,
+    setTool,
+    startStroke,
+    extendStroke,
+    endStroke,
+    cancelStroke,
     requestCustomColor,
     closeCustomColor,
     updateGeometry,

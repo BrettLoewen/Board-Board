@@ -4,6 +4,8 @@ import {
   refreshBackend,
   signUp,
   createBoard,
+  openBoard,
+  cardBox,
   sendAndAcceptFriendRequest,
   verifyBoardPageReached,
 } from "./utils";
@@ -370,6 +372,53 @@ test.describe("Board Management", () => {
       // Verify the input field started empty (the field was cleared when the modal was closed)
       const boardNameInput2 = page.locator(`input[placeholder="${board1Name}"]`);
       await expect(boardNameInput2).toHaveValue("");
+    });
+
+    test("The board page's top bar lines up with the toolbar and the page", async ({ page }) => {
+      await signUp(page, user1Email, user1Password, user1Name);
+      await createBoard(page, board1Name);
+      await openBoard(page, board1Name);
+
+      // Verify the Dashboard link starts at the toolbar's left edge
+      const dashboardBox = await cardBox(page.locator(".navbar-board a"));
+      const toolbarBox = await cardBox(page.locator(".toolbar"));
+      expect(dashboardBox.x).toBeCloseTo(toolbarBox.x, 1);
+
+      // Verify the board's name is centred on the page, and level with the Dashboard link
+      const titleBox = await cardBox(page.locator(".navbar-board-title"));
+      expect(titleBox.x + titleBox.width / 2).toBeCloseTo(page.viewportSize()!.width / 2, 1);
+      expect(titleBox.y).toBeCloseTo(dashboardBox.y, 1);
+    });
+
+    test("The top bars work on narrow windows", async ({ page }) => {
+      const longBoardName = "A board with quite a long name that will not fit in the top bar";
+
+      // Shrink the window once signed up (the dev-only Vue DevTools button covers Sign Up on small windows)
+      await signUp(page, user1Email, user1Password, user1Name);
+      await page.setViewportSize({ width: 800, height: 600 });
+
+      // Verify the dashboard page has no menu button (it would open a sidebar, which the app doesn't have)
+      const menuButton = page.getByRole("button", { name: "Open sidebar" });
+      await expect(menuButton).toHaveCount(0);
+
+      // Verify the board page has no menu button, and shows its Dashboard link and name
+      await createBoard(page, longBoardName);
+      await openBoard(page, longBoardName);
+      await expect(menuButton).toHaveCount(0);
+      const dashboardLink = page.locator(".navbar-board a", { hasText: "Dashboard" });
+      const title = page.locator(".navbar-board-title");
+      await expect(dashboardLink).toBeVisible();
+      await expect(title).toBeVisible();
+
+      // Verify the long name is cut off instead of running under the link, and is still centred
+      const dashboardBox = await cardBox(dashboardLink);
+      const titleBox = await cardBox(title);
+      expect(titleBox.x).toBeGreaterThan(dashboardBox.x + dashboardBox.width);
+      expect(titleBox.x + titleBox.width / 2).toBeCloseTo(400, 1);
+
+      // Verify the Dashboard link goes back to the dashboard
+      await dashboardLink.click();
+      await expect(page.locator("td", { hasText: longBoardName })).toBeVisible();
     });
   });
 
