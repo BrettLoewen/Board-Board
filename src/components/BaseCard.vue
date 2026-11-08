@@ -358,8 +358,10 @@ onMounted(() => {
       mouseButtons: 1,
       ignoreFrom,
       edges: { top: true, left: true, bottom: true, right: true },
-      // How close (screen px) to an edge a press must be to resize instead of move. interact's default (20px)
+      // How far (screen px) inside an edge a press resizes instead of moving. interact's default (20px)
       // would cover a note's whole frame, leaving nowhere to grab it while its text is being edited.
+      // Presses just outside the card also resize: interact counts any point past an edge as on that edge,
+      // and the card's resize band (::before, see the styles) catches them.
       margin: BOARD.RESIZE_MARGIN,
       // Stop the card from shrinking below its type's minimum size.
       // The minimum is a function so it is converted to screen pixels using the current scale.
@@ -429,6 +431,8 @@ onUnmounted(() => {
         '--lock-color': lock?.color,
         // The lock border stays 2px on screen at any zoom, like the name tag
         '--lock-outline': `${2 / board.camera.scale}px`,
+        // How far the resize band reaches outside the card, kept the same on screen at any zoom
+        '--resize-reach': `${BOARD.RESIZE_REACH / board.camera.scale}px`,
       }"
       ref="card-element"
       @pointerdown="onPointerDown"
@@ -470,6 +474,16 @@ onUnmounted(() => {
   transition: box-shadow 0.15s;
   /* The board shows a grab cursor for panning, which doesn't apply to cards */
   cursor: default;
+}
+/* An invisible band just outside the card, so a press slightly past its edge still grabs the edge to resize.
+   It catches presses for the card itself, and turns off with the card (Draw tool, hollow cards). */
+.board-card::before {
+  content: "";
+  position: absolute;
+  inset: calc(-1 * var(--resize-reach));
+  /* Behind the card's contents (the card's z-index makes it a stacking context, so it stays within the card),
+     or it would cover them and take presses meant for them, like a drag to select a note's text */
+  z-index: -1;
 }
 .board-card-selected {
   outline: 2px solid var(--ui-primary);

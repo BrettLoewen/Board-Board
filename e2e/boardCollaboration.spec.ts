@@ -112,7 +112,7 @@ test.describe("Board Collaboration", () => {
       .poll(() =>
         user2Note.locator(".note-card").evaluate((el) => getComputedStyle(el).backgroundColor),
       )
-      .toBe("rgb(251, 207, 232)");
+      .toBe("rgb(236, 72, 153)");
 
     // User1 deletes the note, and verify user2 sees it go
     await user1Page.mouse.click(moved.x + 60, moved.y + 60);
@@ -138,7 +138,7 @@ test.describe("Board Collaboration", () => {
     await pickFromMenu(user1Page, shape, "Shape", "Circle");
     await expect(user2Shape.locator(".shape-card")).toHaveAttribute("data-shape", "circle");
     await pickFromMenu(user1Page, shape, "Colour", "Pink");
-    await expectStyle(user2Shape.locator(".shape-card"), "fill", "rgb(251, 207, 232)");
+    await expectStyle(user2Shape.locator(".shape-card"), "fill", "rgb(236, 72, 153)");
 
     // User1 deletes the shape, and verify user2 sees it go
     await user1Page.keyboard.press("Delete");

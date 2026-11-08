@@ -24,9 +24,9 @@ test.beforeEach(async ({ page }) => {
   await page.goto("http://localhost:5173/Board-Board/");
 });
 
-// The shape colours used by these tests, as the browser reports them (light mode, see the card palette in main.css)
-const GREEN = "rgb(187, 247, 208)"; // The default colour of notes and shapes
-const RED = "rgb(254, 202, 202)";
+// The shape colours used by these tests, as the browser reports them (see PALETTE_COLORS in colors.ts)
+const GREEN = "rgb(21, 128, 61)"; // The default colour of notes and shapes
+const RED = "rgb(185, 28, 28)";
 
 // Verify which shape a card is drawing, and that it is drawing it with the right SVG element
 async function expectShape(card: Locator, shape: string, element: string) {
@@ -216,5 +216,37 @@ test.describe("Shape Cards", () => {
     const shape = await createShape(page);
     await expectShape(shape, "triangle", "polygon");
     await expectStyle(shape.locator(".shape-card"), "fill", RED);
+  });
+
+  test("Only a shape's filled area can be clicked until the shape is selected", async ({
+    page,
+  }) => {
+    // A note, with a circle on top of it (new cards are offset from each other, so they overlap)
+    const note = await createNote(page);
+    const shape = await createShape(page);
+    await pickFromMenu(page, shape, "Shape", "Circle");
+    await page.keyboard.press("Escape");
+    const box = await cardBox(shape);
+    const corner = { x: box.x + 12, y: box.y + 12 };
+
+    // Click the circle card's empty corner, and verify the note underneath is selected instead
+    await page.mouse.click(corner.x, corner.y);
+    await expect(note).toHaveClass(/board-card-selected/);
+    await expect(shape).not.toHaveClass(/board-card-selected/);
+
+    // Click the circle itself, and verify the shape is selected. (Clicking the note brought it to the front, so
+    // click a part of the circle that sticks out past the note's right edge, and past the note's resize band.)
+    const noteBox = await cardBox(note);
+    await page.mouse.click(noteBox.x + noteBox.width + 14, box.y + box.height / 2);
+    await expect(shape).toHaveClass(/board-card-selected/);
+
+    // Once selected, its whole card can be used: verify dragging from the corner moves the shape
+    await page.mouse.move(corner.x, corner.y);
+    await page.mouse.down();
+    await page.mouse.move(corner.x + 50, corner.y + 40, { steps: 8 });
+    await page.mouse.up();
+    const moved = await cardBox(shape);
+    expect(moved.x - box.x).toBeCloseTo(50, 0);
+    expect(moved.y - box.y).toBeCloseTo(40, 0);
   });
 });

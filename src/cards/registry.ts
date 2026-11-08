@@ -24,9 +24,10 @@ export type CardTypeDefinition = {
   // Whether the card's body doesn't fill its rectangle (a circle, for example).
   // BaseCard then draws no rectangular shadow around it, and the body draws its own.
   frameless: boolean;
-  // Whether only the body's own clickable parts (such as a drawn line) can be clicked until the card is selected.
-  // The rest of the card lets clicks through to whatever is behind it. Once selected, the whole card can be
-  // grabbed and resized. Used by drawings, whose rectangle is mostly empty and can cover other cards.
+  // Whether only the body's own clickable parts (a drawn line, a shape's fill) can be clicked until the card is
+  // selected. The rest of the card lets clicks through to whatever is behind it. Once selected, the whole card
+  // can be grabbed and resized. Used by drawings and shapes, whose rectangles can be partly empty and cover
+  // other cards.
   hollow: boolean;
   // The content of a new card, from the user's defaults
   newContent: (defaults: CardDefaults) => Json;
@@ -52,7 +53,7 @@ export const CARD_TYPES: Partial<Record<CardType, CardTypeDefinition>> = {
     minSize: { width: 40, height: 40 },
     editable: false,
     frameless: true,
-    hollow: false,
+    hollow: true,
     newContent: (defaults) => ({ ...defaults.shape }),
     menuItems: shapeMenuItems,
   },

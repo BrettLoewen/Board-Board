@@ -26,9 +26,13 @@ const style = computed(() => ({ fill: cardBackground(content.value.color) }));
     viewBox="0 0 100 100"
     preserveAspectRatio="none"
   >
-    <rect v-if="content.shape === 'square'" width="100" height="100" />
-    <polygon v-else-if="content.shape === 'triangle'" points="50,0 100,100 0,100" />
-    <ellipse v-else cx="50" cy="50" rx="50" ry="50" />
+    <rect v-if="content.shape === 'square'" class="shape-card-fill" width="100" height="100" />
+    <polygon
+      v-else-if="content.shape === 'triangle'"
+      class="shape-card-fill"
+      points="50,0 100,100 0,100"
+    />
+    <ellipse v-else class="shape-card-fill" cx="50" cy="50" rx="50" ry="50" />
   </svg>
 </template>
 
@@ -40,6 +44,11 @@ const style = computed(() => ({ fill: cardBackground(content.value.color) }));
   /* The shadow follows the shape's outline, instead of the card's rectangle (see board-card-frameless) */
   filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.2));
   transition: filter 0.15s;
+}
+/* Until the shape is selected, only the shape itself can be clicked, not the empty corners of its card
+   around a triangle or circle (see board-card-hollow in BaseCard.vue) */
+.shape-card-fill {
+  pointer-events: fill;
 }
 /* Picked up (held without moving) or being dragged */
 .board-card-lifted .shape-card {

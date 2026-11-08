@@ -3,8 +3,8 @@ import type { Database } from "@/types/database.types";
 // The kinds of card a board can hold
 export type CardType = Database["public"]["Enums"]["card_type"];
 
-// The named colours cards can use. Each has a light-mode and a dark-mode shade (see main.css),
-// so a card's colour follows the viewer's colour mode. "auto" is a neutral that follows the colour mode too.
+// The named colours cards can use. Each is the same in both colour modes (see PALETTE_COLORS in colors.ts),
+// except "auto", a neutral that follows the viewer's colour mode.
 export const PALETTE = [
   "auto",
   "yellow",

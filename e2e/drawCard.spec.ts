@@ -24,8 +24,8 @@ test.beforeEach(async ({ page }) => {
   await page.goto("http://localhost:5173/Board-Board/");
 });
 
-// The line colours used by these tests, as the browser reports them (light mode). Lines use the palette's
-// stronger text shades (see the card palette in main.css).
+// The line colours used by these tests, as the browser reports them (see PALETTE_COLORS in colors.ts).
+// Lines use the same colours as notes and shapes.
 const GREEN_LINE = "rgb(21, 128, 61)"; // The default line colour
 const RED_LINE = "rgb(185, 28, 28)";
 const BLUE_LINE = "rgb(29, 78, 216)";

@@ -23,10 +23,11 @@ test.beforeEach(async ({ page }) => {
   await page.goto("http://localhost:5173/Board-Board/");
 });
 
-// The note colours used by these tests, as the browser reports them (light mode, see the card palette in main.css)
-const GREEN = "rgb(187, 247, 208)"; // The default note colour
-const BLUE = "rgb(191, 219, 254)";
-const PINK_TEXT = "rgb(190, 24, 93)";
+// The note colours used by these tests, as the browser reports them (see PALETTE_COLORS in colors.ts)
+const GREEN = "rgb(21, 128, 61)"; // The default note colour
+const BLUE = "rgb(29, 78, 216)";
+const PINK_TEXT = "rgb(236, 72, 153)";
+const WHITE = "rgb(255, 255, 255)";
 
 // Click a note (a quick click, which starts editing its text)
 async function clickNote(page: Page, note: Locator, offsetX = 60, offsetY = 40) {
@@ -196,6 +197,13 @@ test.describe("Note Cards", () => {
     // Pick Blue from the note's Colour menu and verify the note turned blue
     await pickFromMenu(page, note, "Colour", "Blue");
     await expectStyle(note.locator(".note-card"), "backgroundColor", BLUE);
+    // Verify the note's auto text turned white, which reads better on blue
+    await expectStyle(note.locator(".note-card"), "color", WHITE);
+
+    // Verify the colour is the same in dark mode (palette colours don't change with the colour mode)
+    await page.evaluate(() => document.documentElement.classList.add("dark"));
+    await expectStyle(note.locator(".note-card"), "backgroundColor", BLUE);
+    await page.evaluate(() => document.documentElement.classList.remove("dark"));
 
     // Verify the Note button and the next note use the colour that was picked last
     const noteButton = page.locator("button.toolbar-note-button");
@@ -362,5 +370,39 @@ test.describe("Note Cards", () => {
     await page.reload();
     await page.waitForTimeout(1000);
     await expect(cards).toHaveCount(0);
+  });
+
+  test("Notes resize from just outside their edges, and move from just inside", async ({
+    page,
+  }) => {
+    const note = await createNote(page);
+    const start = await cardBox(note);
+
+    // Press 6px outside the right edge and drag, and verify the note got wider without moving
+    await page.mouse.move(start.x + start.width + 6, start.y + start.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(start.x + start.width + 66, start.y + start.height / 2, { steps: 8 });
+    await page.mouse.up();
+    const wider = await cardBox(note);
+    expect(wider.width - start.width).toBeCloseTo(60, 0);
+    expect(wider.x).toBeCloseTo(start.x, 0);
+
+    // Press just outside the bottom-right corner and drag, and verify both edges moved
+    await page.mouse.move(wider.x + wider.width + 5, wider.y + wider.height + 5);
+    await page.mouse.down();
+    await page.mouse.move(wider.x + wider.width + 45, wider.y + wider.height + 35, { steps: 8 });
+    await page.mouse.up();
+    const bigger = await cardBox(note);
+    expect(bigger.width - wider.width).toBeCloseTo(40, 0);
+    expect(bigger.height - wider.height).toBeCloseTo(30, 0);
+
+    // Press 8px inside the left edge and drag, and verify the note moved instead of resizing
+    await page.mouse.move(bigger.x + 8, bigger.y + bigger.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(bigger.x + 68, bigger.y + bigger.height / 2 + 30, { steps: 8 });
+    await page.mouse.up();
+    const moved = await cardBox(note);
+    expect(moved.x - bigger.x).toBeCloseTo(60, 0);
+    expect(moved.width).toBeCloseTo(bigger.width, 0);
   });
 });

@@ -30,24 +30,42 @@ function contrastingText(hex: HexColor): string {
   return (luminance + 0.05) / 0.05 > 1.05 / (luminance + 0.05) ? "#000000" : "#ffffff";
 }
 
+// The palette's colours. One set for both colour modes: each is strong enough to read as a thin line on both the
+// light and the dark board, and the same name means the same colour for a note, a shape, a line or text.
+// "auto" is the one colour that follows the viewer's colour mode (see main.css).
+export const PALETTE_COLORS: Record<Exclude<PaletteColor, "auto">, HexColor> = {
+  yellow: "#facc15",
+  orange: "#f97316",
+  red: "#b91c1c",
+  pink: "#ec4899",
+  purple: "#7e22ce",
+  blue: "#1d4ed8",
+  green: "#15803d",
+  gray: "#6b7280",
+};
+
+// A colour as a hex code, or null for "auto" (which has no fixed colour)
+function toHex(color: CardColor): HexColor | null {
+  if (isHexColor(color)) return color;
+  return color === "auto" ? null : PALETTE_COLORS[color];
+}
+
 // The CSS colour for a card's background
 export function cardBackground(color: CardColor): string {
-  return isHexColor(color) ? color : `var(--card-${color})`;
+  return toHex(color) ?? "var(--card-auto)";
 }
 
-// The CSS colour for text on a card.
-// "auto" text picks a readable colour for the card's background. Other palette colours use a stronger shade
-// of that colour, so they stay readable on the light (or, in dark mode, dark) note colours.
+// The CSS colour for text on a card. "auto" text is black or white, whichever reads better on the card's colour
+// (or the colour mode's text colour on an "auto" card). Any other text colour is used as it is.
 export function cardText(textColor: CardColor, background: CardColor): string {
-  if (isHexColor(textColor)) return textColor;
-  if (textColor !== "auto") return `var(--card-text-${textColor})`;
-  return isHexColor(background) ? contrastingText(background) : `var(--card-${background}-text)`;
+  if (textColor !== "auto") return toHex(textColor) ?? "var(--card-auto-text)";
+  const backgroundHex = toHex(background);
+  return backgroundHex ? contrastingText(backgroundHex) : "var(--card-auto-text)";
 }
 
-// The CSS colour for a drawn line. Lines are thin and drawn straight onto the board, so palette colours use their
-// stronger (text) shade, which stays visible on the board in both colour modes. "auto" is the board's text colour.
+// The CSS colour for a drawn line: the colour itself, or the colour mode's text colour for "auto"
 export function strokeColor(color: CardColor): string {
-  return isHexColor(color) ? color : `var(--card-text-${color})`;
+  return toHex(color) ?? "var(--card-auto-text)";
 }
 
 // The colour's name for menus ("yellow" → "Yellow", a hex colour → "Custom")

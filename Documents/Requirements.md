@@ -40,3 +40,19 @@ This document describes the user-level requirements for the boards of Board Boar
 - C2. I can see which other users are currently on the board I'm on (indicators in the top corner of the screen)
 - C3. When any user moves or edits a card, other users on the board see the changes and are unable to interact with the card until the first user releases it
 - C4. The cursors of other users and which cards are locked (and by who they are locked) are visible (with a matching colour)
+
+## Changes During Implementation
+
+- B1/B2: Dragging a card near the edge of the screen pans the board and grows it, which was originally out of scope.
+- C1: Users on a board are sent back to the dashboard if the board is deleted or unshared with them while they are on it.
+- N3: Red was added to the colour options for cards.
+- N3: Named colours are now one palette that looks the same in light and dark mode, and only the "auto" colour follows the colour mode.
+- N3/S3/D3: New notes, shapes and drawings use the options last picked for that type, and all three start green.
+- S2: The Shape button creates the last-picked shape (a square to start), and right-clicking it picks the next shape and colour ahead of time.
+- S1/D2: Shapes and drawings only respond to their visible part (the fill or the line) until they are selected, so they don't block cards underneath.
+- N1/S1/D2: The area for resizing a card now reaches a little outside its edge, making resizes easier to start.
+- D1: Other users see a line while it is being drawn, not just once it becomes a card.
+- D4: The eraser was dropped, as deleting a drawing card is good enough.
+- C2: The indicators for other users sit in the top-right corner of the top bar.
+- C3: A card held by someone else can still be selected, and trying to change it shakes its name tag to show why nothing happened.
+- C3: A "Reconnecting…" notice shows while the connection to the board is lost.

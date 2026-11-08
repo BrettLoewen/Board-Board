@@ -146,8 +146,11 @@ export const BOARD = {
   CLICK_HOLD_TIME: 300,
   // How far (px) the pointer must move after pressing a card before it starts dragging (the Windows drag threshold)
   DRAG_THRESHOLD: 4,
-  // How close (px) to a card's edge a press must be to resize it rather than move it
-  RESIZE_MARGIN: 6,
+  // The band around a card's edge where a press resizes it rather than moving it: this far (screen px) inside
+  // the edge, and this far outside it. Reaching outside makes the edge easy to hit without taking much of the
+  // card's own area away from moving it.
+  RESIZE_MARGIN: 5,
+  RESIZE_REACH: 8,
   // How long (ms) after the last keystroke a note's text is written to the database.
   // It is also written straight away when editing stops.
   CONTENT_WRITE_DELAY: 600,
