@@ -31,7 +31,8 @@ This document describes the user-level requirements for the boards of Board Boar
 - D1. I can use the Draw tool to create a line on the board, which becomes a proper card once I release the mouse button
 - D2. Once drawing is complete, the card can moved around the board, resized, and deleted
 - D3. I can choose the colour and thickness of the line that gets drawn, before and after drawing
-- D4. Maybe. I can use the Erase tool to delete parts of existing lines
+- ~~D4. Maybe. I can use the Erase tool to delete parts of existing lines~~
+  - Dropped: deleting a drawing card is good enough
 
 ## Collaboration
 

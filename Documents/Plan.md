@@ -56,6 +56,7 @@ It is a guideline, not a contract. When an implementation finds a better approac
 | Card defaults        | New notes use the colours and text size the user **last picked** (saved per card type in `user_preferences.card_defaults`, so shapes and drawings get their own). Before any pick, notes are **green** with auto text at size 16. The toolbar's Note button is drawn in the default colours (the text size doesn't show on it), and right-clicking it changes the defaults ahead of time. Shapes work the same way: before any pick they are **green squares**, and the Shape button shows the next shape in its colour. Draw cards will start **green** too. |
 | Note text size       | Chosen from the right-click menu: a field to type any size (6–200, Enter or clicking away applies it), above presets 12–64. Sizes are in world units, so text scales with the zoom. A bigger size grows the note to fit. |
 | Note auto-grow (A9)  | A note **grows taller** when its text overflows, while it is being edited. It never shrinks on its own. |
+| Eraser (D4)          | **Dropped.** Deleting a drawing card is good enough, so there is no Erase tool. |
 
 ### 1.2 Defaults assumed by this plan (_unconfirmed_, ask before relying on them)
 
@@ -288,14 +289,14 @@ The generated `Database` type will type `content` as `Json`. Every read goes thr
 
 Palette colours are CSS variables, for example `--card-yellow` defined for `:root` and `.dark`, so a card's colour follows the viewer's colour mode (N3). `auto` uses neutral variables (`--ui-bg-elevated` / `--ui-text`).
 
-### 4.4 Draw cards (D1–D4)
+### 4.4 Draw cards (D1–D3)
 
 - **Capture:** with the Draw tool active, a pointerdown on the viewport (on top of cards too) starts a stroke. Points are collected in **world** units via `screenToWorld`. Pointer events are coalesced with `getCoalescedEvents()` for smoothness and rendered live in `DrawPreview`.
 - **On release:** simplify the stroke (Ramer–Douglas–Peucker with a tolerance of about 0.5 / scale world units, capped at ~2 000 points). Then compute the stroke's bounding box, pad it by `thickness / 2` on every side so the line isn't clipped, and create the card with that rect. Points are stored **normalised to the inner box** (card rect minus the padding), as `0..1` pairs.
 - **Render:** `<svg :viewBox="`0 0 ${w} ${h}`">` with a polyline whose points are `pad + p.x * (w - 2*pad)`, and so on, and `stroke-width = thickness`. Thickness is in world units, so it scales with the **camera zoom** (it's part of the board) but **not with the card's resize** (confirmed decision). Avoid `vector-effect: non-scaling-stroke`, because it would also ignore the camera zoom.
 - **Changing thickness after drawing (D3):** the padding changes, so adjust `x/y/width/height` by the padding difference in the same update. That keeps the path visually in place.
 - **Live ghost stroke for other users:** broadcast `stroke:preview` events with batches of new world-space points (Section 6.2), plus `stroke:end` or `stroke:cancel`. Receivers draw them in the drawer's user colour (or the chosen stroke colour) in `DrawPreview`. When the real card's INSERT arrives, the ghost for that `strokeId` is removed. The client generates the card id up front and uses it as the `strokeId`.
-- **Eraser (D4, "maybe"):** `strokes: Point[][]` already allows one card to hold several polylines. Erasing hit-tests the eraser path against the segments (in world units, using the card transform). It removes the covered points and splits polylines where needed, then recomputes the bounding box and renormalises. A card with no points left is deleted. Erasing needs the card's lock (Section 7.2) like any other edit. This is deliberately last in the roadmap.
+- **Eraser (D4): dropped.** Deleting a drawing card is good enough. (The design was to hit-test the eraser path against each line's segments, split lines where they were erased, then re-fit the card around what was left.)
 
 ### 4.5 Client state: the board store
 
@@ -306,7 +307,7 @@ boardId, board row
 cards: Map<id, Card>       // or reactive record; never arrays mutated by index from children
 camera: { x, y, scale }, viewport: { w, h }
 derived: contentRect, bounds, minScale, sortedForZ, lockByCardId (from presence), myHolds
-tool: 'select' | 'draw' | 'erase'; toolOptions: { drawColor, drawThickness }
+tool: 'select' | 'draw'; toolOptions: { drawColor, drawThickness }
 selection: cardId | null
 remote: presence list, cursors, ghost strokes
 actions: createCard, updateGeometry, updateContent, deleteCard, setLayer, bringToFront,
@@ -333,7 +334,7 @@ Components read from the store and call its actions. `Card.vue` today copies the
 
 | Interaction                    | Rule                                                                                                                                                                                                 |
 | ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Pointer routing                | **Don't `stopPropagation` on cards.** interact.js listens on the document, so a stopped pointerdown never starts a drag. Instead, the board's pointerdown handler starts a left-button pan only when `!e.target.closest('.board-card')`. Pointerdown on empty board pans (Select tool) or draws (Draw tool). The middle button always pans; call `preventDefault` on its `mousedown` so Windows autoscroll doesn't start. In Draw/Erase tools, cards ignore pointer events (`pointer-events: none` on the cards layer) so strokes can start over them. |
+| Pointer routing                | **Don't `stopPropagation` on cards.** interact.js listens on the document, so a stopped pointerdown never starts a drag. Instead, the board's pointerdown handler starts a left-button pan only when `!e.target.closest('.board-card')`. Pointerdown on empty board pans (Select tool) or draws (Draw tool). The middle button always pans; call `preventDefault` on its `mousedown` so Windows autoscroll doesn't start. With the Draw tool, cards ignore pointer events (`pointer-events: none` on the cards layer) so strokes can start over them. |
 | Coordinates                    | Cards only know world units. The camera conversion happens only in `camera.ts` helpers and interact listeners (÷ scale).                                                                            |
 | Bounds                         | Any geometry change, local or remote, re-derives `contentRect`, then `bounds`, then `minScale`. The camera is re-clamped **only on camera input or viewport resize**, never because a card moved. Remote activity never moves your camera. |
 | Creation                       | At the view centre (3.5), or from the stroke (4.4).                                                                                                                                                 |
@@ -471,7 +472,7 @@ type BoardPresence = {
   username: string;
   color: string;                 // from userColor(userId), A8
   joinedAt: number;
-  hold: { cardId: string; mode: "move" | "resize" | "edit" | "erase"; at: number } | null;
+  hold: { cardId: string; mode: "move" | "resize" | "edit"; at: number } | null;
 };
 ```
 
@@ -624,12 +625,21 @@ The tool state in the store (`select | draw`), toolbar toggle and toolbar option
   - Drawings are **hollow**: until one is selected, only its line (plus a 6-unit margin) can be clicked, so a drawing around other cards doesn't block them. Once selected, its whole rectangle can be dragged and resized.
   - Points are stored as `[x, y]` pairs rounded to 4 decimal places, which keeps a 2 000-point line around 35 KB.
   - Changing the thickness grows the card around the line. The new size is broadcast before the new thickness, so each message has a newer rev and other clients apply both.
-  - Not done: the eraser (D4), and right-clicking a line while the Draw tool is on (cards ignore the pointer then).
+  - Not done: right-clicking a line while the Draw tool is on (cards ignore the pointer then). The eraser (D4) was dropped (4.4).
   - Tests are in `drawCard.spec.ts`, plus a two-user test in `boardCollaboration.spec.ts`.
 
-### 9.4 Collaboration branch (C2–C4) and the eraser (D4)
+### 9.4 Collaboration branch (C2–C4)
 
-Presence bar (C2), lock visuals and refusal feedback (7.4), cursors (7.3), ghost strokes if not done earlier, user colours (A8). Then the eraser (4.4), if it's still wanted.
+Presence bar (C2), lock visuals and refusal feedback (7.4), cursors (7.3), ghost strokes if not done earlier, user colours (A8). The eraser (4.4) was planned to follow, but was dropped.
+
+- **As built:**
+  - User colours (A8) hash the user id (FNV-1a) into 12 colours that read on both the light and dark board.
+  - The presence bar (C2) sits in the top bar's right corner (the zoom control has the board's top-right corner). It shows other users only, once per user however many tabs they have open, in the order they joined, with up to 4 initials chips and then a "+N" chip. Hovering a chip shows the name.
+  - Lock visuals (C3/C4): a held card has a border and a name tag ("Sam is moving / resizing / editing") in the holder's colour. Both stay the same size on screen at any zoom. Its right-click menu only says who has it, and anything refused (dragging, typing, deleting, the layer or menu options) shakes the tag. Held cards stay hoverable and selectable, rather than `pointer-events: none`, so the refusal can be shown.
+  - Cursors (C4) are broadcast at 100 ms in world units, plus once with `null` when the pointer leaves the board. Nothing is sent while dragging a card or drawing: receivers move the holder's cursor with the card, keeping its place relative to the card (which also follows a resize corner), or put it at the end of the ghost line. Receivers glide each cursor to its latest position, and hide it after 5 s without updates or when its client leaves.
+  - The two visual items left from basic collaboration: held cards glide between broadcasts with a 60 ms CSS transition (instead of interpolating in JavaScript), and a "Reconnecting…" notice shows while the channel is down or the browser is offline. Coming back online refetches the cards, because the channel can take up to a minute to notice a dropped network.
+  - Ghost lines keep the line's own colour rather than the drawer's colour, so they look like the card they will become. The drawer's cursor (in their colour) is shown at the end of the line.
+  - The eraser (D4) was dropped: deleting a drawing card is good enough. The toolbar's unused Erase button was removed.
 
 C1 (sharing with friends) **already exists** through `shared_boards` and the Share modal on the dashboard. Board features only need to rely on `can_select_board`, which the realtime policies above already do.
 

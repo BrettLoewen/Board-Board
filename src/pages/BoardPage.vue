@@ -25,7 +25,7 @@ onUnmounted(() => {
   <div class="board-page">
     <!-- The navbar's toggle opens a sidebar, and this app doesn't have one. Everything goes in the left slot
          because the navbar hides its centre slot on narrow windows. The title is centred by its own styles. -->
-    <UDashboardNavbar class="navbar-board" :toggle="false">
+    <UDashboardNavbar class="navbar-board" :toggle="false" :ui="{ right: 'ms-auto' }">
       <template #left>
         <ULink to="/dashboard" as="button" class="text-primary font-medium text-xl">
           Dashboard
@@ -34,6 +34,11 @@ onUnmounted(() => {
         <h1 class="navbar-board-title text-primary font-medium text-xl">
           {{ board.board?.name }}
         </h1>
+      </template>
+
+      <!-- Who else is on the board (C2), pushed to the right corner (the bar lines its content up on the left) -->
+      <template #right>
+        <PresenceBar />
       </template>
     </UDashboardNavbar>
 

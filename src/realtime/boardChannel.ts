@@ -15,8 +15,13 @@ export type GeometryMessage = Pick<
 // A card's content, as broadcast while it is edited
 export type ContentMessage = Pick<Card, "id" | "content" | "rev">;
 
+// Where a client's pointer is on the board, in world units, or null when it left the board
+export type CursorMessage = { clientId: string; x: number | null; y: number | null };
+
 // New points (in world units) of a line someone is drawing. The stroke id becomes the id of the line's card.
+// The client id lets others move the drawer's cursor along the line.
 export type StrokePreviewMessage = {
+  clientId: string;
   strokeId: string;
   color: CardColor;
   thickness: number;
@@ -34,6 +39,8 @@ export type BoardChannelHandlers = {
   onStrokePreview: (message: StrokePreviewMessage) => void;
   onStrokeEnd: (strokeId: string) => void;
   onStrokeCancel: (strokeId: string) => void;
+  // Someone's pointer moved on the board, or left it
+  onCursor: (message: CursorMessage) => void;
   // From the database, after a change is committed
   onCommitted: (card: Card) => void;
   onCommittedDelete: (id: string) => void;
@@ -82,6 +89,7 @@ export async function openBoardChannel(
   on(EVENTS.STROKE_PREVIEW, (payload) => handlers.onStrokePreview(payload as StrokePreviewMessage));
   on(EVENTS.STROKE_END, (payload) => handlers.onStrokeEnd(payload.strokeId as string));
   on(EVENTS.STROKE_CANCEL, (payload) => handlers.onStrokeCancel(payload.strokeId as string));
+  on(EVENTS.CURSOR, (payload) => handlers.onCursor(payload as CursorMessage));
   // Database events carry the committed row as `record` (or just the `id` for deletes)
   on(EVENTS.DB_INSERT, (payload) => handlers.onCommitted(payload.record as Card));
   on(EVENTS.DB_UPDATE, (payload) => handlers.onCommitted(payload.record as Card));

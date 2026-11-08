@@ -204,11 +204,43 @@ function onStopEditing(): void {
   board.stopEditing(props.cardId);
 }
 
+//============ Held by someone else ============
+// Who is holding this card, if it's someone else. The card shows a border and a name tag in their colour,
+// and can't be changed here until they let go.
+const lock = computed(() => board.lockByCard.get(props.cardId));
+const LOCK_VERBS = { move: "moving", resize: "resizing", edit: "editing" } as const;
+const lockLabel = computed(() =>
+  lock.value ? `${lock.value.username} is ${LOCK_VERBS[lock.value.mode]}` : "",
+);
+
+// Trying to change the card while it's held (dragging it, typing in it, deleting it, a menu option) is refused.
+// The name tag shakes so it's clear why nothing happened.
+const refused = ref(false);
+let refusedTimer: ReturnType<typeof setTimeout> | undefined;
+watch(
+  () => board.refusal,
+  (refusal) => {
+    if (refusal?.cardId !== props.cardId) return;
+    refused.value = false;
+    clearTimeout(refusedTimer);
+    // Restart the animation on the next frame, so a second refusal shakes the tag again
+    requestAnimationFrame(() => {
+      refused.value = true;
+      refusedTimer = setTimeout(() => (refused.value = false), 500);
+    });
+  },
+);
+
 //============ Right-click menu ============
-// The type's own items (such as colours), then the layer, then delete
+// The type's own items (such as colours), then the layer, then delete.
+// While someone else holds the card, the menu only says who has it.
 const menuItems = computed<ContextMenuItem[][]>(() => {
   const current = card.value;
   if (!current) return [];
+
+  if (lock.value) {
+    return [[{ label: `${lockLabel.value} this card`, icon: "i-ph-lock-simple", disabled: true }]];
+  }
 
   return [
     definition.value?.menuItems(current, board) ?? [],
@@ -369,6 +401,7 @@ onUnmounted(() => {
   stopEdgePan();
   clearTimeout(holdTimer);
   clearTimeout(idleTimer);
+  clearTimeout(refusedTimer);
   window.removeEventListener("pointerup", onPointerUp);
   interactable?.unset();
 });
@@ -384,6 +417,8 @@ onUnmounted(() => {
         'board-card-lifted': lifted || dragging,
         'board-card-frameless': definition?.frameless,
         'board-card-hollow': definition?.hollow,
+        'board-card-locked': lock,
+        'board-card-refused': refused,
       }"
       :data-card-id="card.id"
       :style="{
@@ -391,6 +426,9 @@ onUnmounted(() => {
         width: card.width + 'px',
         height: card.height + 'px',
         zIndex: board.zIndexById.get(card.id),
+        '--lock-color': lock?.color,
+        // The lock border stays 2px on screen at any zoom, like the name tag
+        '--lock-outline': `${2 / board.camera.scale}px`,
       }"
       ref="card-element"
       @pointerdown="onPointerDown"
@@ -408,6 +446,14 @@ onUnmounted(() => {
         @before-input="onBeforeInput"
         @stop-editing="onStopEditing"
       />
+      <!-- Who is holding the card. Scaled against the zoom, so it stays the same size on screen. -->
+      <div
+        v-if="lock"
+        class="card-lock-tag"
+        :style="{ transform: `scale(${1 / board.camera.scale})` }"
+      >
+        {{ lockLabel }}
+      </div>
     </div>
   </CardMenu>
 </template>
@@ -433,6 +479,50 @@ onUnmounted(() => {
 .board-card-lifted {
   cursor: grabbing;
   box-shadow: 0 10px 24px rgba(0, 0, 0, 0.25);
+}
+/* Held by someone else: a border in their colour. Their changes arrive about every 50 ms, so the card glides
+   between them instead of jumping. */
+.board-card-locked {
+  outline: var(--lock-outline) solid var(--lock-color);
+  outline-offset: var(--lock-outline);
+  cursor: not-allowed;
+  transition:
+    transform 0.06s linear,
+    width 0.06s linear,
+    height 0.06s linear,
+    box-shadow 0.15s;
+}
+.card-lock-tag {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: -4px;
+  transform-origin: bottom left;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background-color: var(--lock-color);
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  pointer-events: none;
+}
+/* Someone tried to change the card while it's held */
+.board-card-refused .card-lock-tag {
+  animation: card-lock-shake 0.4s ease-in-out;
+}
+@keyframes card-lock-shake {
+  0%,
+  100% {
+    translate: 0;
+  }
+  20%,
+  60% {
+    translate: -4px;
+  }
+  40%,
+  80% {
+    translate: 4px;
+  }
 }
 /* The body doesn't fill the card's rectangle, so a shadow here would show around nothing */
 .board-card-frameless {

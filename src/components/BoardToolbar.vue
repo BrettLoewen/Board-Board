@@ -163,7 +163,6 @@ function createCard(type: "note" | "shape"): void {
         <p>Draw</p>
       </UButton>
     </CardMenu>
-    <UButton class="toolbar-button">Erase</UButton>
   </div>
 </template>
 

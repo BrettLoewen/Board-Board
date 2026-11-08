@@ -52,8 +52,7 @@ export type ShapeDefaults = ShapeContent;
 // Stored as pairs rather than objects to keep long lines small.
 export type StrokePoint = [number, number];
 
-// The content of a draw card. `strokes` holds one line per drawing today, and is a list so a line can later be
-// split in two (by the eraser).
+// The content of a draw card. `strokes` holds one line per drawing, in a list so a card could hold several.
 export type DrawContent = {
   color: CardColor;
   // The line's width in world units (it scales with the zoom, but not when the card is resized)

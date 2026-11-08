@@ -79,6 +79,8 @@ export const REALTIME = {
     STROKE_PREVIEW: "stroke:preview",
     STROKE_END: "stroke:end",
     STROKE_CANCEL: "stroke:cancel",
+    // Where someone's pointer is on the board (or that it left the board)
+    CURSOR: "cursor",
     // Sent by database triggers on a board's channel (see the board_realtime migration)
     DB_INSERT: "INSERT",
     DB_UPDATE: "UPDATE",
@@ -94,7 +96,12 @@ export const REALTIME = {
     CONTENT: 100,
     // New points of a line being drawn
     STROKE: 50,
+    // The pointer's position. Not sent while dragging a card or drawing: others work the pointer out from the
+    // card's movement or the line instead, which saves messages.
+    CURSOR: 100,
   },
+  // Someone's cursor is hidden this long (ms) after their last update
+  CURSOR_TIMEOUT: 5000,
   // A ghost line is removed this long (ms) after its last points arrive, in case the person drawing it left
   // without finishing it (lines whose card arrives are removed straight away)
   GHOST_STROKE_TIMEOUT: 10000,

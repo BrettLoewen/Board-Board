@@ -62,6 +62,10 @@ function onPointerDown(event: PointerEvent): void {
 }
 
 function onPointerMove(event: PointerEvent): void {
+  // Show everyone else where this pointer is (C4). Only the mouse, or a pen or finger touching the board,
+  // has a position worth sharing.
+  if (event.pointerType === "mouse" || event.buttons) board.moveCursor(eventToWorld(event));
+
   if (event.pointerId === drawPointerId) {
     // The browser can merge several pointer moves into one event. Using all of them keeps fast lines smooth.
     const events = event.getCoalescedEvents?.() ?? [];
@@ -177,6 +181,7 @@ onUnmounted(() => {
     @pointermove="onPointerMove"
     @pointerup="onPointerUp"
     @pointercancel="onPointerCancel"
+    @pointerleave="board.moveCursor(null)"
     @mousedown="onMouseDown"
     @wheel.prevent="onWheel"
   >
@@ -185,7 +190,13 @@ onUnmounted(() => {
       <BaseCard v-for="card in board.cardList" :key="card.id" :card-id="card.id" />
       <DrawPreview />
     </div>
+    <RemoteCursors />
     <ZoomControl />
+    <!-- The connection dropped after the board opened. Changes are caught up on when it comes back. -->
+    <div v-if="board.reconnecting" class="board-reconnecting board-overlay">
+      <UIcon name="i-ph-wifi-slash" class="size-4" />
+      Reconnecting…
+    </div>
     <CardColorModal />
   </div>
 </template>
@@ -212,6 +223,24 @@ onUnmounted(() => {
 .board-tool-draw .board-card,
 .board-tool-draw .board-card * {
   pointer-events: none !important;
+}
+
+.board-reconnecting {
+  position: absolute;
+  top: 15px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--ui-border-accented);
+  background-color: var(--ui-bg);
+  color: var(--ui-text);
+  font-size: 14px;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.15);
 }
 
 .board-world {
